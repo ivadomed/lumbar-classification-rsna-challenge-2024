@@ -1,0 +1,6 @@
+data/
+output/
+checkpoints/
+__pycache__/
+data_manager_dcm.py
+*.csv

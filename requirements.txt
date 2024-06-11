@@ -1,0 +1,8 @@
+numpy
+pydicom
+pandas
+scikit-learn
+monai
+torch
+torchvision
+nibabel
