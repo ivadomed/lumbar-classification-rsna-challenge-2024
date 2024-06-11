@@ -29,29 +29,32 @@ device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
 # Define a custom dataset class
 class Dataset_2D(Dataset):
-    def __init__(self, data_df, transform=None):
+    def __init__(self, data_df, transform=None, infer=False):
         labels = data_df.drop(columns=["img_path","study_id"])
         # convert labels to a list of intergers lists
         labels = labels.values.tolist()
-        self.data = {"paths": data_df["img_path"], "labels": labels}
+
+        self.data = {"paths": data_df["img_path"], "labels": labels, "study_id": data_df["study_id"]}
         self.transform = transform
         self.length = len(self.data["paths"])
         self.num_classes = len(labels[0])
-
+        self.infer = infer
     def __len__(self):
         return len(self.data["paths"])
 
     def __getitem__(self, index):
         print(index)
         path = self.data["paths"][index]
-        label = self.data["labels"][index]
+        if not self.infer:
+            label = self.data["labels"][index]
+            # convert label list to tensor with shape [1,num_classes]
+            label = torch.tensor([label])
         print(path)
         if self.transform:
             ## Rotate, flip, shift intensity if training
             image = self.transform(path)
 
-        # convert label list to tensor with shape [1,num_classes]
-        label = torch.tensor([label])
+        
         print(image.shape)
         if image.shape[0] > 1:
             # Some images have multiple channels, average the channels
@@ -60,7 +63,10 @@ class Dataset_2D(Dataset):
         #add channel dimension
         image = image.unsqueeze(0)
 
-        return image, label
+        if not self.infer:
+            return image, label
+        else:
+            return image, self.data["study_id"][index]
 
 def load_dcm(root_folder):
     """ Load the DICOM files from the specified folder and return the 3D volume."""
@@ -114,9 +120,25 @@ def build_data(labels_df, root_dir):
     train_data_df.to_csv("train_data_nifti.csv")
 
     return train_data_df, val_data_df, len(labels)
+
+def build_test_data(root_dir):
+    """ find the path in the root dir and return them in a the dataframe."""
+    data_df = pd.DataFrame(columns=["img_path", "study_id"])
+    for root, dirs, files in os.walk(root_dir):
+        for file in files:
+            if file.endswith(".nii.gz"):            
+                # get the folder name
+                # get the patient ID
+                study_id = root.split("/")[-2]
+                # concatenate the dataframes
+                data_df = pd.concat([data_df, pd.DataFrame({"img_path": root+"/"+file, "study_id": int(study_id)}, index=[0])], ignore_index=True)
+    # Reset the index
+    data_df.reset_index(drop=True, inplace=True)
+    return data_df
+
     
 
-def df_to_Dataset(data_df, val = False):
+def df_to_Dataset(data_df, val = False, infer = False):
     """ Convert the file paths to a custom dataset object."""
     if not val:
         transform = Compose(
@@ -136,5 +158,5 @@ def df_to_Dataset(data_df, val = False):
         LoadImage(image_only=True, ensure_channel_first=True),
     ]
 )
-    dataset = Dataset_2D(data_df, transform=transform)
+    dataset = Dataset_2D(data_df, transform=transform, infer=infer)
     return dataset

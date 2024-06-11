@@ -15,8 +15,12 @@ args = parser.parse_args()
 input_folder = args.input_folder
 
 # make sure the input folder end with "train_images"
-if not input_folder.endswith("train_images"):
-    print("The input folder should end with 'train_images'")
+if input_folder.endswith("train_images"):
+    dataset_type='train'
+if input_folder.endswith("test_images"):
+    dataset_type='test'
+else:
+    print("The input folder should end with 'train_images' or 'test_images'")
     exit()
 
 processed_folders = []
@@ -26,7 +30,7 @@ for root, dirs, files in os.walk(input_folder):
             if root not in processed_folders:
                 processed_folders.append(root)
 
-                root_nifti = root.replace("train_images", "train_nifti")
+                root_nifti = root.replace(f"{dataset_type}_images", f"{dataset_type}_nifti")
                 if not os.path.exists(root_nifti):
                     os.makedirs(root_nifti)
                 subprocess.run(f'dcm2niix -o {root_nifti} -z y {root}', shell=True)
