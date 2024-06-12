@@ -17,7 +17,7 @@ input_folder = args.input_folder
 # make sure the input folder end with "train_images"
 if input_folder.endswith("train_images"):
     dataset_type='train'
-if input_folder.endswith("test_images"):
+elif input_folder.endswith("test_images"):
     dataset_type='test'
 else:
     print("The input folder should end with 'train_images' or 'test_images'")
