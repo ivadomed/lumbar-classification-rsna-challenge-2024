@@ -12,8 +12,10 @@ Convert DICOM to nifti :
 /!\ Processing can last roughly 20min 
 
 In order to launch the training, one can use this command :
-`python train.py  --evaluate False --data_csv /paht/to/train.csv --base_dir /path/to/train_nifti --num_epochs 10 --GPU_ID 0`
+`python train.py  --evaluate False --data_csv /paht/to/train.csv --image_folder /path/to/train_nifti --num_epochs 10 --GPU_ID gpu_n°`
 
+In order to obtain the submition csv file, one can use this command :
+`python submition.py  --model_path path/to/model.pth --image_folder path/to/images --GPU_ID Gpu_n°`
 
 ### Preprocessing
 

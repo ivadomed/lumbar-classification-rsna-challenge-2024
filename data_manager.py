@@ -1,3 +1,7 @@
+"""
+This file contains the functions to load the data and convert it to a dataset object with the desired preprocessing.
+"""
+
 import numpy as np
 import pandas as pd
 import os
@@ -23,9 +27,6 @@ from monai.transforms import (
 )
 import torch
 import subprocess
-
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
-
 
 # Define a custom dataset class
 class Dataset_2D(Dataset):

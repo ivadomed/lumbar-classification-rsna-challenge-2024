@@ -1,11 +1,14 @@
+"""
+This script trains a the model and evaluates it on the validation set if desired.
+"""
+
 from torch.utils.data import DataLoader
 from data_manager import Dataset_2D, df_to_Dataset, build_data
-from classifier_Networks import C3D
+from classifier_Networks import Baseline_CNN
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from sklearn.metrics import f1_score
 import argparse
 import os
 
@@ -17,15 +20,15 @@ parser = argparse.ArgumentParser(description='Train and evaluate the model.')
 # Add the arguments
 parser.add_argument('--evaluate', type=bool, default=True,
                     help='a boolean for the evaluation mode, True by Default')
-parser.add_argument('--data_csv', type=str, default='images_paths.csv',
-                    help='the path to the dataset CSV file, images_paths.csv by Default')
+parser.add_argument('--data_csv', type=str, default='train.csv.csv',
+                    help='the path to the label dataset CSV file, images_paths.csv by Default')
 parser.add_argument('--model_path', type=str, default='none',
                     help='the path to the model, Random weights by Default')
 parser.add_argument('--output_file', type=str, default='model.pth',
                     help='the path to the output model, model.pth by Default')
 parser.add_argument('--output_directory', type=str, default='checkpoints',
                     help='the path to the output directory, checkpoints by Default')
-parser.add_argument('--base_dir', type=str, default='train_images',
+parser.add_argument('--image_folder', type=str, default='train_images',
                     help='the path to the directory in which to find the images, train_images by Default')
 parser.add_argument('--num_epochs', type=int, default=10,
                     help='the number of epochs, 10 by Default')
@@ -41,7 +44,7 @@ data_csv = args.data_csv
 model_path = args.model_path
 output_file = args.output_file
 output_directory = args.output_directory + '/' 
-base_dir = args.base_dir + '/'
+image_folder = args.image_folder + '/'
 num_epochs = args.num_epochs
 GPU_ID = args.GPU_ID
 
@@ -68,7 +71,7 @@ def training_one_epoch(model):
 #### Load the data
 
 # Build the data
-pd_train_data, pd_val_data, num_classes = build_data(data_csv, base_dir)
+pd_train_data, pd_val_data, num_classes = build_data(data_csv, image_folder)
 
 # Create the training and validation datasets
 train_dataset = df_to_Dataset(pd_train_data)

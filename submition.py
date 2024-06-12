@@ -5,34 +5,33 @@ The results is stored a submission shaped csv file.
 
 from torch.utils.data import DataLoader
 from data_manager import Dataset_2D, df_to_Dataset, build_data
-from classifier_Networks import C3D
+from classifier_Networks import Baseline_CNN
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from sklearn.metrics import f1_score
 import argparse
 import os
 import pandas as pd
 
 # Define the parser
 parser = argparse.ArgumentParser(description='Classify lumbar spine images')
-parser.add_argument('--data_folder', type=str,  help='Path to the dataset in nifti format')
+parser.add_argument('--image_folder', type=str,  help='Path to the dataset in nifti format')
 parser.add_argument('--model_path', type=str, help='Path to the pre-trained model')
 parser.add_argument('--GPU_ID', type=int, default=0, help='ID of the GPU to use')
 
 args = parser.parse_args()
-data_folder = args.data_folder
+image_folder = args.image_folder
 model_path = args.model_path
 GPU_ID = args.GPU_ID
 
 # Load the data
-data_df = build_data(data_folder)
+data_df = build_data(image_folder)
 data = df_to_Dataset(data_df, val=True, infer=True)
 
 # Load the model
 device = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
-model = C3D(num_classes=75)
+model = Baseline_CNN(num_classes=75)
 model.load_state_dict(torch.load(model_path))
 model.to(device)
 model.eval()
