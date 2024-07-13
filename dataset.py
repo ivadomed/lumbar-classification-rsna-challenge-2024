@@ -46,7 +46,9 @@ class RSNADataset(Dataset):
     label_df : pd.DataFrame, dataframe with labels of each subject
     exclude : list (optional), list of subjects to exclude    
     """
-    def __init__(self, root_dir : str, study_ids : list, seqtype : str, label_df : pd.DataFrame, exclude : list = None):
+    def __init__(self, root_dir : str, study_ids : list, 
+                 seqtype : str, label_df : pd.DataFrame, 
+                 train : bool = True, exclude : list = None):
         
         
         orientation, contrast = seqtype.split("-")
@@ -67,9 +69,32 @@ class RSNADataset(Dataset):
                 paths = glob.glob(root_dir+"/sub-"+str(study_id)+"/anat/*"+orientation+"*"+contrast+"*.nii.gz")
                 try :
                     path = paths[0]
-                    self.study_ids.append(study_id)
-                    self.images_paths.append(path)
-                    self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
+                    label = label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int)
+                    
+                    # Resample minority classes
+                    if train:
+                        if label.sum()==0:
+                            self.study_ids.append(study_id)
+                            self.images_paths.append(path)                        
+                            self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
+                        
+                        elif label.sum()==1:
+                            for i in range(10):
+                                self.study_ids.append(study_id)
+                                self.images_paths.append(path)                        
+                                self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
+                        
+                        elif label.sum()>=2:
+                            for i in range(20):
+                                self.study_ids.append(study_id)
+                                self.images_paths.append(path)                        
+                                self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
+                    
+                    else:
+                        self.study_ids.append(study_id)
+                        self.images_paths.append(path)                        
+                        self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
+                    
                 except IndexError:
                     pass
         
