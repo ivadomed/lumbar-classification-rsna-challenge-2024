@@ -1,0 +1,8 @@
+{
+    "folder" : "bids-rsna-lscd",
+    "seqtype" : "sag-T1",
+    "lr" : 1e-4,
+    "epochs" : 20,
+    "batch_size" : 1,
+    "gpu" : "cuda:1"
+}
