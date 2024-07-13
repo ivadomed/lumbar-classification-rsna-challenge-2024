@@ -16,11 +16,13 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from image import Image
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import log_loss, balanced_accuracy_score
+from sklearn.metrics import log_loss, balanced_accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from monai.data import DataLoader, CacheDataset
 from dataset import RSNADataset
 import torch 
+from torch.nn.functional import cross_entropy
 import argparse
 from monai.transforms import (
     Compose,
@@ -131,27 +133,27 @@ def train(model, epochs, optimizer,
             # negative log loss for validation
             metric_eval = 0
             step = 0
-            for batch_data in val_loader:
+            for batch_data in tqdm(val_loader):
                 step+=1
                 outputs, labels, id = batch_data[0].to(device), batch_data[1].to(device), batch_data[2]
                 outputs = outputs[None]
                 with torch.no_grad():
                     try:
                         outputs = model(inputs)
-                        _, n = outputs.shape
+                        b, n = outputs.shape
                         k = n//3
-                        outputs = outputs.reshape((1, k, 3))
+                        outputs = outputs.reshape((b, k, 3))
                     except RuntimeError:
                         exceptions.append(id)
                         print("RuntimeError")
                     metric = 0
                     _, c, _ = labels.shape
                     for i in range(c): 
-                        loss=criterion(outputs[:,i,:], labels[:,i,:]) / c
-                        metric+=loss.item()
+                        loss=cross_entropy(outputs[:,i,:], labels[:,i,:]) / c
+                        metric+=loss
                     metric_eval += metric
                     
-            metric_eval /= len(val_data)
+            metric_eval /= step
             metric_values.append(metric_eval)
 
             if metric_eval < best_metric:
@@ -257,19 +259,22 @@ def main():
                              study_ids=train_id,
                              seqtype=seqtype,
                              label_df=id_label,
-                             exclude=exclude
+                             exclude=exclude,
+                             train=True
                             )
     val_data = RSNADataset(root_dir=folder,
                              study_ids=val_id,
                              seqtype=seqtype,
                              label_df=id_label,
-                             exclude=exclude
+                             exclude=exclude,
+                             train=False
                             )
     test_data = RSNADataset(root_dir=folder,
                              study_ids=test_id,
                              seqtype=seqtype,
                              label_df=id_label,
-                             exclude=exclude
+                             exclude=exclude,
+                             train=False
                             )
     
     train_loader = DataLoader(dataset=train_data, 
@@ -311,8 +316,8 @@ def main():
 
         # Save losses, evaluation metric
     
-        np.save("epoch-loss-values.npy", np.array(epoch_loss_values))
-        np.save("metric_values.npy", np.array(metric_values))
+        # np.save("epoch-loss-values.npy", np.array(epoch_loss_values))
+        # np.save("metric_values.npy", np.array(metric_values))
 
         print(exceptions)
     # exceptions = np.array(exceptions)
@@ -333,7 +338,22 @@ def main():
     np.save("y_true.npy", y_true)
     np.save("y_pred.npy", y_pred)
     
-    print("Test metric :", metric)
+    n, _, k, l = y_true.shape
+    
+    
+    y_test = y_true.reshape((n*k, l)).argmax(axis=-1)
+    pred = y_pred.reshape((n*k, l)).argmax(axis=-1)
+    
+    print("Raw accuracy score on test set :", metric)
+
+    labels = [0, 1, 2]
+    cm = confusion_matrix(y_test, pred, labels=labels)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm,
+                                display_labels=labels)
+
+    disp.plot()
+    plt.savefig("confusion_matrix.png")
+    plt.show()
 
 if __name__=="__main__":
     main()
