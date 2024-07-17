@@ -25,20 +25,18 @@ import torch
 from torch.nn.functional import cross_entropy
 import argparse
 from monai.transforms import (
+    LoadImaged,
+    Orientationd,
+    EnsureChannelFirstd,
+    Spacingd,
     Compose,
-    RandFlip,
-    RandRotate90,
-    RandRotate,
-    RandShiftIntensity,
-    ToTensor,
-    RandSpatialCrop,
-    LoadImage,
-    SqueezeDim,
-    RandRotate,
-    RandSimulateLowResolution,
-    Resize,
-    CenterSpatialCrop,
+    ResizeWithPadOrCropd,
+    CenterScaleCropd,
+    RandFlipd,
+    NormalizeIntensityd,
+    GaussianSmoothd
 )
+
 from monai.networks.nets import (ResNet,
                                 EfficientNetBN,
                                 ViT
@@ -88,25 +86,24 @@ def train(model, epochs, optimizer,
     
     exceptions = []
     
-    for epoch in tqdm(range(epochs)):
+    for epoch in (range(epochs)):
         print("-" * 10)
         print(f"epoch {epoch + 1}/{epochs}")
         model.train()
         epoch_loss = 0
         step = 0
 
-        for batch_data in train_loader:
+        for batch_data in tqdm(train_loader):
             step += 1
-            inputs, labels, id = batch_data[0].to(device), batch_data[1].to(device), batch_data[2][0]
+            inputs, labels, id = batch_data["image"].to(device), batch_data["label"].to(device), batch_data["study_id"][0]
             id = int(id)
-            inputs = inputs[None]
             # print("inputs.shape :", inputs.shape)
             # print("labels.shape :", labels.shape)
             optimizer.zero_grad()
             outputs = model(inputs)
-            _, n = outputs.shape
+            b, n = outputs.shape
             k = n//3
-            outputs = outputs.reshape((1, k, 3))
+            outputs = outputs.reshape((b, k, 3))
             # print(outputs.shape)
             loss = 0
             _, c, _ = labels.shape
@@ -120,7 +117,7 @@ def train(model, epochs, optimizer,
             optimizer.step()
             epoch_loss += loss.item()
             epoch_len = len(train_data) // train_loader.batch_size
-            print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}, study id : {id}")
+            # print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}, study id : {id}")
             writer.add_scalar("train_loss", loss.item(), epoch_len * epoch + step)
 
         epoch_loss /= step
@@ -135,8 +132,7 @@ def train(model, epochs, optimizer,
             step = 0
             for batch_data in tqdm(val_loader):
                 step+=1
-                outputs, labels, id = batch_data[0].to(device), batch_data[1].to(device), batch_data[2]
-                outputs = outputs[None]
+                inputs, labels, id = batch_data["image"].to(device), batch_data["label"].to(device), batch_data["study_id"]
                 with torch.no_grad():
                     try:
                         outputs = model(inputs)
@@ -179,8 +175,7 @@ def test(model, test_loader, device):
     y_pred = []
     
     for batch_data in tqdm(test_loader):
-        inputs, labels, id = batch_data[0].to(device), batch_data[1].to(device), batch_data[2][0]
-        inputs = inputs[None]
+        inputs, labels, id = batch_data["image"].to(device), batch_data["label"].to(device), batch_data["study_id"][0]
         with torch.no_grad():
             outputs = model(inputs)
             b, n = outputs.shape
@@ -207,12 +202,21 @@ def main():
         config = json.load(f)
 
     folder = config["folder"]
-    lr = config["lr"]
-    epochs = config["epochs"]
-    seqtype = config["seqtype"]
-    batch_size = config["batch_size"]
     gpu = config["gpu"]
     
+    # Hyperparameters
+    lr = config["lr"]
+    epochs = config["epochs"]
+    batch_size = config["batch_size"]
+
+    # Sequence type
+    seqtype = config["seqtype"]
+    
+    # Transform parameters
+    orientation = config["orientation"]
+    pixdim = config["pixdim"]
+    interp_mode = config["interpmode"]
+    crop_padd_size = config["crop_padd_size"]
     
     LEVELS = ["l1_l2"] #, "l2_l3", "l3_l4", "l4_l5", "l5_s1"]
 
@@ -254,33 +258,56 @@ def main():
     
     exclude = list(np.load("exclude.npy"))
     
+    # Transforms
+    
+    
+    transform = Compose(
+            [
+                LoadImaged(keys=["image"]),
+                EnsureChannelFirstd(keys=["image"]),
+                Orientationd(keys=["image"], axcodes=orientation), # RSP --> LIA
+                Spacingd(
+                    keys=["image"],
+                    pixdim=pixdim,
+                    mode=interp_mode,
+                ),
+                ResizeWithPadOrCropd(keys=["image"], spatial_size=crop_padd_size),
+                NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
+            ]
+        )
+    
     # Build dataset and dataloader
     train_data = RSNADataset(root_dir=folder,
                              study_ids=train_id,
                              seqtype=seqtype,
                              label_df=id_label,
                              exclude=exclude,
-                             train=True
+                             train=True,
+                             transform=transform
                             )
     val_data = RSNADataset(root_dir=folder,
                              study_ids=val_id,
                              seqtype=seqtype,
                              label_df=id_label,
                              exclude=exclude,
-                             train=False
+                             train=False,
+                             transform=transform
                             )
     test_data = RSNADataset(root_dir=folder,
                              study_ids=test_id,
                              seqtype=seqtype,
                              label_df=id_label,
                              exclude=exclude,
-                             train=False
+                             train=False,
+                             transform=transform
                             )
+    
+    print("Length of test dataset :", len(test_data))
     
     train_loader = DataLoader(dataset=train_data, 
                               batch_size=batch_size)
     
-    val_loader = DataLoader(dataset=train_data, 
+    val_loader = DataLoader(dataset=val_data, 
                               batch_size=batch_size)
     
     test_loader = DataLoader(dataset=test_data, 
@@ -325,7 +352,7 @@ def main():
 
     shapes = {}
 
-    # model.load_state_dict(torch.load("best_metric_model_classification3d_array.pth"))
+    model.load_state_dict(torch.load("best_metric_model_classification3d_array.pth"))
     
     metric, y_true, y_pred = test(model=model, 
                                 test_loader=test_loader, 
