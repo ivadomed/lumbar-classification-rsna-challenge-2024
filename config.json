@@ -3,6 +3,10 @@
     "seqtype" : "sag-T1",
     "lr" : 1e-4,
     "epochs" : 20,
-    "batch_size" : 1,
-    "gpu" : "cuda:1"
+    "batch_size" : 4,
+    "gpu" : "cuda:1",
+    "orientation" : "RSP",
+    "pixdim" : [4.4, 0.6, 0.6],
+    "interpmode" : "bilinear",
+    "crop_padd_size" : [20, 512, 512]
 }
