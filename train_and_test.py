@@ -10,8 +10,6 @@ Author : Simon Queric
 import sys
 import json
 sys.path.insert(0, './code/')
-import os
-import glob
 import numpy as np 
 import pandas as pd
 from tqdm import tqdm
@@ -19,7 +17,7 @@ from image import Image
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import log_loss, balanced_accuracy_score, confusion_matrix, ConfusionMatrixDisplay
-from monai.data import DataLoader, CacheDataset
+from monai.data import DataLoader
 from dataset import RSNADataset
 import torch 
 from torch.nn.functional import cross_entropy
@@ -109,11 +107,7 @@ def train(model, epochs, optimizer,
             _, c, _ = labels.shape
             for i in range(c): 
                 loss+=criterion(outputs[:,i,:], labels[:,i,:]) / c  # iterating across each level and condition
-            try:
-                loss.backward()
-            except RuntimeError:
-                print("RuntimeError raised because of a second backward propagation")
-                exceptions.append(id)
+            loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
             epoch_len = len(train_data) // train_loader.batch_size
@@ -217,9 +211,8 @@ def main():
     pixdim = config["pixdim"]
     interp_mode = config["interpmode"]
     crop_padd_size = config["crop_padd_size"]
+    LEVELS = config["levels"]
     
-    LEVELS = ["l1_l2"] #, "l2_l3", "l3_l4", "l4_l5", "l5_s1"]
-
     # Dictionary mapping sequence type (contrast + orientation) to the associated condition.
 
     seq2cond = {"sag-T1" : ["left_neural_foraminal_narrowing", 
