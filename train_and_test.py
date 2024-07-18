@@ -208,8 +208,8 @@ def test(model, test_loader, device):
             b, n = outputs.shape
             k = n // 3
             outputs = outputs.reshape((b, k, 3))
-            y_pred.append(outputs.cpu().numpy())
-            y_true.append(labels.cpu().numpy())
+            y_pred += list(outputs.cpu().numpy().reshape((b*k, 3)))
+            y_true += list(labels.cpu().numpy().reshape((b*k, 3)))
             for c in range(k):
                 value = torch.eq(
                     outputs[:, c].argmax(dim=-1), labels[:, c].argmax(dim=-1)
@@ -281,8 +281,8 @@ def main():
 
     # Train - Validation - Test split
 
-    train_id, val_id = train_test_split(study_ids, test_size=0.4, random_state=42)
-    val_id, test_id = train_test_split(val_id, test_size=0.5, random_state=42)
+    train_id, val_id = train_test_split(study_ids, test_size=1500, random_state=42)
+    val_id, test_id = train_test_split(val_id, test_size=0.9, random_state=42)
 
     # subject to exclude
 
@@ -312,7 +312,6 @@ def main():
         seqtype=seqtype,
         label_df=id_label,
         exclude=exclude,
-        train=False,
         transform=transform,
     )
     val_data = RSNADataset(
@@ -321,7 +320,6 @@ def main():
         seqtype=seqtype,
         label_df=id_label,
         exclude=exclude,
-        train=False,
         transform=transform,
     )
     test_data = RSNADataset(
@@ -330,7 +328,6 @@ def main():
         seqtype=seqtype,
         label_df=id_label,
         exclude=exclude,
-        train=False,
         transform=transform,
     )
 
@@ -391,7 +388,7 @@ def main():
     shapes = {}
 
     model.load_state_dict(torch.load("best_metric_model_classification3d_array.pth"))
-
+    model.eval()
     metric, y_true, y_pred = test(model=model, test_loader=test_loader, device=device)
 
     y_true = np.array(y_true)
@@ -400,10 +397,10 @@ def main():
     np.save("y_true.npy", y_true)
     np.save("y_pred.npy", y_pred)
 
-    n, b, k, l = y_true.shape
+    print(y_true.shape)
 
-    y_test = y_true.reshape((n * b * k, l)).argmax(axis=-1)
-    pred = y_pred.reshape((n * b * k, l)).argmax(axis=-1)
+    y_test = y_true.argmax(axis=-1)
+    pred = y_pred.argmax(axis=-1)
 
     print("Raw accuracy score on test set :", metric)
 
