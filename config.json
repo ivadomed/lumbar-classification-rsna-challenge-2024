@@ -1,13 +1,14 @@
 {
     "folder" : "bids-rsna-lscd",
     "seqtype" : "sag-T1",
-    "lr" : 1e-4,
-    "epochs" : 20,
+    "lr" : 1e-3,
+    "epochs" : 5,
     "batch_size" : 2,
-    "levels" : ["l1_l2"],
-    "gpu" : "cuda:1",
+    "levels" : ["l5_s1"],
+    "gpu" : "cuda:3",
     "orientation" : "RSP",
     "pixdim" : [4.4, 0.6, 0.6],
     "interpmode" : "bilinear",
-    "crop_padd_size" : [20, 512, 512]
+    "crop_padd_size" : [20, 450, 250],
+    "weights" : [1.0, 2.0, 4.0] 
 }
