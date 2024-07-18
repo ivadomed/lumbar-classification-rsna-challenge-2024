@@ -55,13 +55,13 @@ class RSNADataset(Dataset):
                             self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
                         
                         elif label.sum()==1:
-                            for i in range(10):
+                            for i in range(3):
                                 self.study_ids.append(study_id)
                                 self.images_paths.append(path)                        
                                 self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
                         
                         elif label.sum()>=2:
-                            for i in range(20):
+                            for i in range(9):
                                 self.study_ids.append(study_id)
                                 self.images_paths.append(path)                        
                                 self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
