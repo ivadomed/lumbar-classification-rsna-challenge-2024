@@ -238,6 +238,7 @@ def main():
     lr = config["lr"]
     epochs = config["epochs"]
     batch_size = config["batch_size"]
+    weigth = config["weights"]
 
     # Sequence type
     seqtype = config["seqtype"]
@@ -311,7 +312,7 @@ def main():
         seqtype=seqtype,
         label_df=id_label,
         exclude=exclude,
-        train=True,
+        train=False,
         transform=transform,
     )
     val_data = RSNADataset(
@@ -362,7 +363,7 @@ def main():
     #                         num_classes=(len(cond_lev)-1)*3).to(device)
 
     # Optimization method, loss criterion
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(weight=torch.Tensor(weigth).to(device))
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     if epochs > 0:
@@ -374,7 +375,6 @@ def main():
             train_loader,
             train_data,
             val_loader,
-            val_data,
             device,
             writer,
         )
@@ -400,10 +400,10 @@ def main():
     np.save("y_true.npy", y_true)
     np.save("y_pred.npy", y_pred)
 
-    n, _, k, l = y_true.shape
+    n, b, k, l = y_true.shape
 
-    y_test = y_true.reshape((n * k, l)).argmax(axis=-1)
-    pred = y_pred.reshape((n * k, l)).argmax(axis=-1)
+    y_test = y_true.reshape((n * b * k, l)).argmax(axis=-1)
+    pred = y_pred.reshape((n * b * k, l)).argmax(axis=-1)
 
     print("Raw accuracy score on test set :", metric)
 
