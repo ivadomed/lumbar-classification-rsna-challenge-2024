@@ -1,6 +1,7 @@
 import pandas as pd
 from tqdm import tqdm
 import glob
+import numpy as np
 import torch
 from monai.data import Dataset
 
@@ -22,8 +23,7 @@ class RSNADataset(Dataset):
     """
     def __init__(self, root_dir : str, study_ids : list, 
                  seqtype : str, label_df : pd.DataFrame, 
-                 train : bool = True, exclude : list = None,
-                 transform : any = None):
+                 exclude : list = None, transform : any = None):
                 
         orientation, contrast = seqtype.split("-")
         
@@ -47,29 +47,10 @@ class RSNADataset(Dataset):
                     path = paths[0]
                     label = label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int)
                     
-                    # Resample minority classes
-                    if train:
-                        if label.sum()==0:
-                            self.study_ids.append(study_id)
-                            self.images_paths.append(path)                        
-                            self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
-                        
-                        elif label.sum()==1:
-                            for i in range(3):
-                                self.study_ids.append(study_id)
-                                self.images_paths.append(path)                        
-                                self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
-                        
-                        elif label.sum()>=2:
-                            for i in range(9):
-                                self.study_ids.append(study_id)
-                                self.images_paths.append(path)                        
-                                self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
-                    
-                    else:
-                        self.study_ids.append(study_id)
-                        self.images_paths.append(path)                        
-                        self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
+                
+                    self.study_ids.append(study_id)
+                    self.images_paths.append(path)                        
+                    self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
                     
                 except IndexError:
                     pass
