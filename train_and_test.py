@@ -8,8 +8,7 @@ Author : Simon Queric
 """
 
 import sys
-import json
-
+import yaml
 sys.path.insert(0, "./code/")
 import numpy as np
 import pandas as pd
@@ -43,7 +42,7 @@ from monai.transforms import (
 
 from monai.networks.nets import ResNet, EfficientNetBN, ViT
 from torch.utils.tensorboard import SummaryWriter
-
+import torch.optim.lr_scheduler as lr_scheduler
 
 def get_parser():
     parser = argparse.ArgumentParser(
@@ -80,11 +79,14 @@ def train(
     epochs,
     optimizer,
     criterion,
+    scheduler,
     train_loader,
     train_data,
     val_loader,
     device,
     writer,
+    autocast,
+    scaler
 ):
     """
     This function train a model for the RSNA kaggle data challenge.
@@ -94,7 +96,7 @@ def train(
     metric_values = []
     losses = []
     best_metric = torch.inf
-    val_interval = 2
+    val_interval = 1
 
     exceptions = []
 
@@ -107,11 +109,14 @@ def train(
 
         for batch_data in tqdm(train_loader):
             step += 1
-            inputs, labels, id = (
-                batch_data["image"].to(device),
-                batch_data["label"].to(device),
-                batch_data["study_id"][0],
-            )
+            try:
+                inputs, labels, id = (
+                    batch_data["image"].to(device),
+                    batch_data["label"].to(device),
+                    batch_data["study_id"][0],
+                )
+            except RuntimeError:
+                print("Runtime error on subject ", batch_data["study_id"][0])
             id = int(id)
             # print("inputs.shape :", inputs.shape)
             # print("labels.shape :", labels.shape)
@@ -120,24 +125,41 @@ def train(
             b, n = outputs.shape
             k = n // 3
             outputs = outputs.reshape((b, k, 3))
-            # print(outputs.shape)
+            # print(outputs)
             loss = 0
-            _, c, _ = labels.shape
-            for i in range(c):
-                loss += (
-                    criterion(outputs[:, i, :], labels[:, i, :]) / c
-                )  # iterating across each level and condition
-            loss.backward()
+            _, c = labels.shape
+            # print("Output shapes : ", outputs.shape)
+            # print("Target shapes : ", labels.shape)
+            # print(labels.min(), labels.max())
+            with autocast:
+                for i in range(c):
+                    # print(labels[:,i])
+                    loss += (
+                        criterion(outputs[:, i], labels[:, i]) / c
+                    )  # iterating across each level and condition
+            scaler.scale(loss).backward()
             optimizer.step()
             epoch_loss += loss.item()
             epoch_len = len(train_data) // train_loader.batch_size
-            # print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}, study id : {id}")
+            print(f"{step}/{epoch_len}, train_loss: {loss.item():.4f}, study id : {id}")
             writer.add_scalar("train_loss", loss.item(), epoch_len * epoch + step)
-
+            # except RuntimeError:
+            #     print("study id :", id)
+            #     print("Volume shape :", inputs.shape)
         epoch_loss /= step
         epoch_loss_values.append(epoch_loss)
         print(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
-
+        scheduler.step()
+        
+        total_norm = 0.
+        for p in model.parameters():
+            param_norm = p.grad.detach().norm(2)
+            total_norm += param_norm.item() ** 2
+        
+        total_norm = total_norm ** (1. / 2)
+        
+        print("Total norm of model parameters gradients epoch {} : {:.3e}".format(epoch+1, total_norm))
+        
         if (epoch + 1) % val_interval == 0:
             model.eval()
 
@@ -161,11 +183,12 @@ def train(
                         exceptions.append(id)
                         print("RuntimeError")
                     metric = 0
-                    _, c, _ = labels.shape
-                    for i in range(c):
-                        loss = cross_entropy(outputs[:, i, :], labels[:, i, :]) / c
-                        metric += loss
-                    metric_eval += metric
+                    with autocast:
+                        _, c = labels.shape
+                        for i in range(c):
+                            loss = criterion(outputs[:, i], labels[:, i]) / c
+                            metric += loss.item()
+                        metric_eval += metric
 
             metric_eval /= step
             metric_values.append(metric_eval)
@@ -208,8 +231,8 @@ def test(model, test_loader, device):
             b, n = outputs.shape
             k = n // 3
             outputs = outputs.reshape((b, k, 3))
-            y_pred += list(outputs.cpu().numpy().reshape((b*k, 3)))
-            y_true += list(labels.cpu().numpy().reshape((b*k, 3)))
+            y_pred += list(outputs.cpu().numpy().reshape((b, k, 3)))
+            y_true += list(labels.cpu().numpy().reshape((b, k)))
             for c in range(k):
                 value = torch.eq(
                     outputs[:, c].argmax(dim=-1), labels[:, c].argmax(dim=-1)
@@ -223,16 +246,19 @@ def test(model, test_loader, device):
 
 
 def main():
-
     parser = get_parser()
     args = parser.parse_args()
     config_file = args.config
 
     with open(config_file, "r") as f:
-        config = json.load(f)
+        config = yaml.safe_load(f)
 
     folder = config["folder"]
     gpu = config["gpu"]
+    use_amp = bool(config["use_amp"])
+    scaler = bool(config["scaler"])
+    
+
 
     # Hyperparameters
     lr = config["lr"]
@@ -263,7 +289,7 @@ def main():
 
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     id_label = pd.read_csv("./data/train.csv")
-    id_label = id_label.replace(text2int)
+    
 
     cond_lev = ["study_id"]
 
@@ -275,14 +301,16 @@ def main():
 
     # print(cond_lev)
     id_label = id_label[cond_lev]
+    id_label = id_label.dropna()
+    id_label = id_label.replace(text2int)
     study_ids = id_label.values[:, 0].astype(int)  # store id of each subject
 
     print(study_ids)
 
     # Train - Validation - Test split
-
-    train_id, val_id = train_test_split(study_ids, test_size=1500, random_state=42)
-    val_id, test_id = train_test_split(val_id, test_size=0.9, random_state=42)
+    # 0.5 - 0.25 - 0.25
+    train_id, val_id = train_test_split(study_ids, test_size=0.3, random_state=42)
+    val_id, test_id = train_test_split(val_id, test_size=0.5, random_state=42)
 
     # subject to exclude
 
@@ -290,20 +318,36 @@ def main():
 
     # Transforms
 
-    transform = Compose(
-        [
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            Orientationd(keys=["image"], axcodes=orientation),  # RSP --> LIA
-            Spacingd(
-                keys=["image"],
-                pixdim=pixdim,
-                mode=interp_mode,
-            ),
-            ResizeWithPadOrCropd(keys=["image"], spatial_size=crop_padd_size),
-            NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
-        ]
-    )
+    if eval(crop_padd_size) is not None:
+        transform = Compose(
+            [
+                LoadImaged(keys=["image"]),
+                EnsureChannelFirstd(keys=["image"]),
+                Orientationd(keys=["image"], axcodes=orientation),
+                Spacingd(
+                    keys=["image"],
+                    pixdim=pixdim,
+                    mode=interp_mode,
+                ),
+                ResizeWithPadOrCropd(keys=["image"], spatial_size=crop_padd_size),
+                NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
+            ]
+        )
+    else :
+        print("No crop")
+        transform = Compose(
+            [
+                LoadImaged(keys=["image"]),
+                EnsureChannelFirstd(keys=["image"]),
+                Orientationd(keys=["image"], axcodes=orientation),
+                Spacingd(
+                    keys=["image"],
+                    pixdim=pixdim,
+                    mode=interp_mode,
+                ),
+                NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
+            ]
+        )
 
     # Build dataset and dataloader
     train_data = RSNADataset(
@@ -331,19 +375,24 @@ def main():
         transform=transform,
     )
 
+    print("Length of train dataset :", len(train_data))
+    print("Length of validation dataset :", len(val_data))
     print("Length of test dataset :", len(test_data))
 
-    train_loader = DataLoader(dataset=train_data, batch_size=batch_size)
+    train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=True)
 
-    val_loader = DataLoader(dataset=val_data, batch_size=batch_size)
+    val_loader = DataLoader(dataset=val_data, batch_size=batch_size, shuffle=True)
 
-    test_loader = DataLoader(dataset=test_data, batch_size=batch_size)
+    test_loader = DataLoader(dataset=test_data, batch_size=batch_size, shuffle=True)
 
     writer = SummaryWriter()
 
     device = torch.device(f"{gpu}" if torch.cuda.is_available() else "cpu")
 
     print("device =", device)
+    
+    autocast = torch.cuda.amp.autocast(enabled=use_amp, dtype=torch.half)
+    scaler = torch.cuda.amp.GradScaler(enabled=scaler, init_scale=4096)
 
     model = ResNet(
         block="basic",
@@ -354,26 +403,33 @@ def main():
         num_classes=(len(cond_lev) - 1) * 3,
     ).to(device)
 
-    # model = EfficientNetBN("efficientnet-b7",
+    # model = EfficientNetBN("efficientnet-b3",
     #                         spatial_dims=3,
     #                         in_channels=1,
     #                         num_classes=(len(cond_lev)-1)*3).to(device)
 
     # Optimization method, loss criterion
     criterion = torch.nn.CrossEntropyLoss(weight=torch.Tensor(weigth).to(device))
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr) #torch.optim.SGD(model.parameters(), lr=lr)
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.1)
 
+    # scheduler = CosineAnnealingLR(optimizer, T_max=50)
+
+    
     if epochs > 0:
         exceptions, epoch_loss_values, metric_values = train(
             model,
             epochs,
             optimizer,
             criterion,
+            scheduler,
             train_loader,
             train_data,
             val_loader,
             device,
             writer,
+            autocast,
+            scaler
         )
 
         # Save losses, evaluation metric
@@ -394,18 +450,20 @@ def main():
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
 
+    n, k = y_true.shape
+
     np.save("y_true.npy", y_true)
     np.save("y_pred.npy", y_pred)
 
-    print(y_true.shape)
+    # y_test = y_true.reshape((n*k, 3))
+    y_pred = y_pred.reshape((n*k, 3))
 
-    y_test = y_true.argmax(axis=-1)
     pred = y_pred.argmax(axis=-1)
-
+    
     print("Raw accuracy score on test set :", metric)
 
     labels = [0, 1, 2]
-    cm = confusion_matrix(y_test, pred, labels=labels)
+    cm = confusion_matrix(y_true, pred, labels=labels)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
 
     disp.plot()
