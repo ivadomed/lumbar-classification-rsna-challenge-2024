@@ -45,12 +45,13 @@ class RSNADataset(Dataset):
                 paths = glob.glob(root_dir+"/sub-"+str(study_id)+"/anat/*"+orientation+"*"+contrast+"*.nii.gz")
                 try :
                     path = paths[0]
-                    label = label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int)
-                    
-                
                     self.study_ids.append(study_id)
                     self.images_paths.append(path)                        
-                    self.labels.append(label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int))
+                    label = label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int)
+                    if label.min() < 0 or label.max() > 2 :
+                        print(study_id)
+                        print(label)
+                    self.labels.append(label)
                     
                 except IndexError:
                     pass
@@ -63,18 +64,18 @@ class RSNADataset(Dataset):
         
         id = self.study_ids[index]
         label = self.labels[index]
-        n = len(label)
-        y = torch.zeros((n, 3))
-        for i in range(n):
-            if label[i]==0:
-                y[i] = torch.tensor([1, 0, 0])
-            if label[i]==1:
-                y[i] = torch.tensor([0, 1, 0])
-            if label[i]==2:
-                y[i] = torch.tensor([0, 0, 1]) 
+        # n = len(label)
+        # y = torch.zeros((n, 3))
+        # for i in range(n):
+        #     if label[i]==0:
+        #         y[i] = torch.tensor([1, 0, 0])
+        #     if label[i]==1:
+        #         y[i] = torch.tensor([0, 1, 0])
+        #     if label[i]==2:
+        #         y[i] = torch.tensor([0, 0, 1]) 
     
         datad["image"] = self.images_paths[index]
-        datad["label"] = y 
+        datad["label"] = torch.Tensor(label).to(torch.long)
         datad["study_id"] = id
         
         if self.transform is not None:
