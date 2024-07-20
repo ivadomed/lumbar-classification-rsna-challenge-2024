@@ -36,6 +36,7 @@ from monai.transforms import (
     ResizeWithPadOrCropd,
     CenterScaleCropd,
     RandFlipd,
+    Resized,
     NormalizeIntensityd,
     GaussianSmoothd,
 )
@@ -121,7 +122,7 @@ def train(
             # print("inputs.shape :", inputs.shape)
             # print("labels.shape :", labels.shape)
             optimizer.zero_grad()
-            outputs = model(inputs)
+            outputs = model(inputs) # for vit : [0]
             b, n = outputs.shape
             k = n // 3
             outputs = outputs.reshape((b, k, 3))
@@ -149,7 +150,8 @@ def train(
         epoch_loss /= step
         epoch_loss_values.append(epoch_loss)
         print(f"epoch {epoch + 1} average loss: {epoch_loss:.4f}")
-        scheduler.step()
+        if scheduler is not None:
+            scheduler.step()
         
         total_norm = 0.
         for p in model.parameters():
@@ -175,7 +177,7 @@ def train(
                 )
                 with torch.no_grad():
                     try:
-                        outputs = model(inputs)
+                        outputs = model(inputs) # for vit [0]
                         b, n = outputs.shape
                         k = n // 3
                         outputs = outputs.reshape((b, k, 3))
@@ -231,11 +233,12 @@ def test(model, test_loader, device):
             b, n = outputs.shape
             k = n // 3
             outputs = outputs.reshape((b, k, 3))
-            y_pred += list(outputs.cpu().numpy().reshape((b, k, 3)))
+            y_pred += list(outputs.cpu().numpy().reshape((b, k, 3)).argmax(axis=-1))
             y_true += list(labels.cpu().numpy().reshape((b, k)))
+            # print(y_pred, y_true)
             for c in range(k):
                 value = torch.eq(
-                    outputs[:, c].argmax(dim=-1), labels[:, c].argmax(dim=-1)
+                    outputs[:, c].argmax(dim=-1), labels[:, c]
                 )
                 metric_count += len(value)
                 num_correct += value.sum().item()
@@ -274,6 +277,7 @@ def main():
     pixdim = config["pixdim"]
     interp_mode = config["interpmode"]
     crop_padd_size = config["crop_padd_size"]
+    resize = config["resize"]
     LEVELS = config["levels"]
 
     # Dictionary mapping sequence type (contrast + orientation) to the associated condition.
@@ -318,32 +322,38 @@ def main():
 
     # Transforms
 
-    if eval(crop_padd_size) is not None:
+    if type(crop_padd_size)==list:
         transform = Compose(
             [
                 LoadImaged(keys=["image"]),
                 EnsureChannelFirstd(keys=["image"]),
                 Orientationd(keys=["image"], axcodes=orientation),
-                Spacingd(
-                    keys=["image"],
-                    pixdim=pixdim,
-                    mode=interp_mode,
+                # Spacingd(
+                #     keys=["image"],
+                #     pixdim=pixdim,
+                #     mode=interp_mode,
+                # ),
+                Resized(keys=["image"],
+                        spatial_size=resize
                 ),
-                ResizeWithPadOrCropd(keys=["image"], spatial_size=crop_padd_size),
+                # ResizeWithPadOrCropd(keys=["image"], spatial_size=crop_padd_size),
                 NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
             ]
         )
-    else :
-        print("No crop")
+
+    elif eval(crop_padd_size) is None:
         transform = Compose(
             [
                 LoadImaged(keys=["image"]),
                 EnsureChannelFirstd(keys=["image"]),
                 Orientationd(keys=["image"], axcodes=orientation),
-                Spacingd(
-                    keys=["image"],
-                    pixdim=pixdim,
-                    mode=interp_mode,
+                # Spacingd(
+                #     keys=["image"],
+                #     pixdim=pixdim,
+                #     mode=interp_mode,
+                # ),
+                Resized(keys=["image"],
+                        spatial_size=resize
                 ),
                 NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
             ]
@@ -394,28 +404,35 @@ def main():
     autocast = torch.cuda.amp.autocast(enabled=use_amp, dtype=torch.half)
     scaler = torch.cuda.amp.GradScaler(enabled=scaler, init_scale=4096)
 
-    model = ResNet(
-        block="basic",
-        layers=[1, 1, 1, 1],
-        block_inplanes=[64, 128, 256, 512],
-        spatial_dims=3,
-        n_input_channels=1,
-        num_classes=(len(cond_lev) - 1) * 3,
-    ).to(device)
+    # model = ViT(in_channels=1,
+    #         img_size=(15, 512, 512),
+    #         patch_size=(12, 12, 12),
+    #         pos_embed='conv', 
+    #         post_activation = None,
+    #         classification=True,
+    #         num_classes=(len(cond_lev) - 1) * 3).to(device)
 
-    # model = EfficientNetBN("efficientnet-b3",
-    #                         spatial_dims=3,
-    #                         in_channels=1,
-    #                         num_classes=(len(cond_lev)-1)*3).to(device)
+    # model = ResNet(
+    #     block="basic",
+    #     layers=[1, 1, 1, 1],
+    #     block_inplanes=[64, 128, 256, 512],
+    #     spatial_dims=3,
+    #     n_input_channels=1,
+    #     num_classes=(len(cond_lev) - 1) * 3,
+    # ).to(device)
+
+    model = EfficientNetBN("efficientnet-b3",
+                            spatial_dims=3,
+                            in_channels=1,
+                            num_classes=(len(cond_lev)-1)*3).to(device)
 
     # Optimization method, loss criterion
     criterion = torch.nn.CrossEntropyLoss(weight=torch.Tensor(weigth).to(device))
     optimizer = torch.optim.Adam(model.parameters(), lr=lr) #torch.optim.SGD(model.parameters(), lr=lr)
-    scheduler = lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.1)
+    scheduler = None # lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.1)
 
     # scheduler = CosineAnnealingLR(optimizer, T_max=50)
-
-    
+  
     if epochs > 0:
         exceptions, epoch_loss_values, metric_values = train(
             model,
@@ -431,6 +448,13 @@ def main():
             autocast,
             scaler
         )
+        
+        plt.figure()
+        plt.plot(list(range(epochs)), epoch_loss_values)
+        plt.savefig("Training_losses.png")
+        plt.figure()
+        plt.plot(list(range(epochs)), metric_values)
+        plt.savefig("Validation_losses.png")
 
         # Save losses, evaluation metric
 
@@ -450,20 +474,25 @@ def main():
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
 
-    n, k = y_true.shape
-
+    n, k = y_pred.shape
+    
+    
     np.save("y_true.npy", y_true)
     np.save("y_pred.npy", y_pred)
 
-    # y_test = y_true.reshape((n*k, 3))
-    y_pred = y_pred.reshape((n*k, 3))
+    
 
-    pred = y_pred.argmax(axis=-1)
+    y_test = y_true.reshape(n*k)
+    y_pred = y_pred.reshape(n*k)
+
+    print(y_pred.shape)
+    print(y_true.shape)
+    # pred = y_pred.argmax(axis=-1)
     
     print("Raw accuracy score on test set :", metric)
 
     labels = [0, 1, 2]
-    cm = confusion_matrix(y_true, pred, labels=labels)
+    cm = confusion_matrix(y_test, y_pred, labels=labels)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
 
     disp.plot()
