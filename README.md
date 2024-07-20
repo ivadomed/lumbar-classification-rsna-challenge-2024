@@ -8,4 +8,4 @@ Hyperparameters and preprocessing parameters can be modified via the `config.yml
 
 ## Training and testing
 
-Just run the command `python3 train_and_test.py -config config.yml`
+Just run the command `python3 train_cnn.py -config config.yml`
