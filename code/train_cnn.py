@@ -9,11 +9,9 @@ Author : Simon Queric
 
 import sys
 import yaml
-sys.path.insert(0, "./code/")
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from image import Image
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
@@ -57,22 +55,6 @@ def get_parser():
     )
 
     return parser
-
-
-def get_shapes(loader, seqtype):
-    """
-    This function run through a data loader of RSNADataset to get shapes of volumes.
-    The batch size of the data loader must be equal to one.
-    """
-    shapes = {}
-    for batch_data in tqdm(loader):
-        inputs, id = batch_data[0], batch_data[2][0]
-        shapes[str(id)] = inputs.shape
-
-    with open("shapes" + seqtype + ".json", "w") as f:
-        json.dump(shapes, f)
-
-    return
 
 
 def train(
@@ -260,9 +242,8 @@ def main():
     gpu = config["gpu"]
     use_amp = bool(config["use_amp"])
     scaler = bool(config["scaler"])
+    exclude_file = config["exclude_file"]
     
-
-
     # Hyperparameters
     lr = config["lr"]
     epochs = config["epochs"]
@@ -318,7 +299,7 @@ def main():
 
     # subject to exclude
 
-    exclude = list(np.load("exclude.npy"))
+    exclude = list(np.load(exclude_file))
 
     # Transforms
 
