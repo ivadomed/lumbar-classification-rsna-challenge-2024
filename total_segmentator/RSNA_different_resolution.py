@@ -7,7 +7,7 @@ import subprocess
 
 # Define the base directory where your BIDS data is stored
 #base_dir = '/media/xkrejc78/Transcend/NeuroPoly_internship/data/rsna-2024-lumbar-challenge/bids-rsna-lscd'
-base_dir = '/home/ge.polymtl.ca/p120942/data/bids-rsna-lscd'
+base_dir = '/home/ge.polymtl.ca/p120942/data/rsna-2024-lumbar-challenge/bids-rsna-lscd'
 
 
 # Function to resample a NIfTI image to a new voxel size
