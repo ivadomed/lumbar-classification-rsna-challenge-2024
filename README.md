@@ -4,8 +4,8 @@
 
 The baseline startegy is <b>One condition, one model.</b>
 It's training a ResNet18 model, implemented by Monai.
-Hyperparameters and preprocessing parameters can be modified via the `config.yml` file.
+Hyperparameters and preprocessing parameters can be modified via the `config/config.yml` file.
 
 ## Training and testing
 
-Just run the command `python3 train_cnn.py -config config.yml`
+Just run the command `python3 code/train_cnn.py -config config/config.yml`
