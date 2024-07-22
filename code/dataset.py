@@ -18,11 +18,6 @@ import matplotlib.pyplot as plt
 from monai.networks.nets import BasicUNet
 
 
-sys.path.insert(0, "./code/")
-from image import Image
-
-
-
 class RSNADataset(Dataset):
     """
     Build a monai dataset, given a data folder containing volumes, a contrast and a dataframe of labels.

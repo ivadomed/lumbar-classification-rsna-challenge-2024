@@ -9,11 +9,9 @@ Author : Simon Queric
 
 import sys
 import yaml
-sys.path.insert(0, "./code/")
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from image import Image
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
@@ -255,6 +253,7 @@ def main():
     gpu = config["gpu"]
     use_amp = bool(config["use_amp"])
     scaler = bool(config["scaler"])
+    exclude_file = config["exclude-file"]
     
     coordinates = pd.read_csv("./data/train_label_coordinates.csv")
 
@@ -314,7 +313,7 @@ def main():
     # val_id = val_id[0:1]
     # subject to exclude
 
-    exclude = list(np.load("exclude.npy"))
+    exclude = list(np.load(exclude_file))
 
     # Transforms
 
@@ -473,8 +472,6 @@ def main():
     
     np.save("y_true.npy", y_true)
     np.save("y_pred.npy", y_pred)
-
-    
 
     y_test = y_true.reshape(n*k)
     y_pred = y_pred.reshape(n*k)
