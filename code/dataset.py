@@ -173,7 +173,11 @@ class RSNAPatchDataset(Dataset):
         series_id = self.series_ids[index]
         coor = self.centers[index]
         
-        vol = LoadImage()(path2vol)
+        if self.transform is not None:
+            vol = self.transform(path2vol)
+    
+        else :
+            vol = LoadImage()(path2vol)    
         H, W, D = vol.shape
            
         # print(label)
@@ -203,10 +207,7 @@ class RSNAPatchDataset(Dataset):
             
             datad[LEVELS[k]] = patch
             
-            
-        if self.transform is not None:
-            
-            return self.transform(datad)    
+
         
         return datad
     
@@ -288,6 +289,6 @@ if __name__=="__main__":
     batch_data = data.__getitem__(idx)
     print(batch_data["L1/L2"].shape)
     plt.figure()
-    plt.imshow(batch_data["L5/S1"][:,:,4], cmap="gray")
+    plt.imshow(batch_data["L3/L4"][:,:,4], cmap="gray")
     plt.savefig("test.png")
     
