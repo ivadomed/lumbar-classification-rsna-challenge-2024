@@ -1,0 +1,29 @@
+folder: bids-rsna-lscd
+seqtype: sag-T1
+lr: 0.0001 # 0.0002
+epochs: 5
+batch_size: 1
+levels: 
+  - l1_l2
+  - l2_l3
+  - l3_l4
+  - l4_l5
+  - l5_s1
+gpu: cuda:3 #cuda:3
+orientation: RSP
+pixdim: 
+  - 4.4
+  - 0.6
+  - 0.6
+interpmode: bilinear
+crop_padd_size: [20, 512, 512] #None
+resize : [20, 512, 512]
+weights: 
+  - 1.0
+  - 2.0
+  - 4.0
+train_size: 0
+test_size: 0
+val_size: 0
+use_amp: "True"
+scaler: "True"
