@@ -1,7 +1,9 @@
 import pandas as pd
 from tqdm import tqdm
 import glob
+import yaml
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 from monai.data import Dataset
 from monai.transforms import (
@@ -11,6 +13,7 @@ from monai.transforms import (
     Resized,
     NormalizeIntensityd
 )
+from sklearn.model_selection import train_test_split
 
 class RSNADataset(Dataset):
     """
@@ -118,6 +121,7 @@ class RSNAPatchDataset(Dataset):
         
         self.transform = transform
         self.study_ids = []
+        self.series_ids = []
         self.images_paths = []
         self.labels = []
         self.centers = []
@@ -167,15 +171,14 @@ class RSNAPatchDataset(Dataset):
         path2vol = self.images_paths[index]
         id = self.study_ids[index]
         series_id = self.series_ids[index]
-        label = self.labels[index]
+        coor = self.centers[index]
         
         vol = LoadImage()(path2vol)
         H, W, D = vol.shape
            
         # print(label)
-        C = len(label)
-         
-        label = self.label
+        C = len(coor)         
+        label = self.labels[index]
         
         datad = {"label" : torch.Tensor(label).to(torch.long),
                  "L1/L2": None,
@@ -189,17 +192,16 @@ class RSNAPatchDataset(Dataset):
         # Extract patches
         
         for c in range(C):
-            level = label.iloc[c]["level"]
-            
-            x = torch.Tensor([label.iloc[c]["x"]])
-            y = W - torch.Tensor([label.iloc[c]["y"]])
-            z = D - torch.Tensor([label.iloc[c]["instance_number"]])
+            level = coor.iloc[c]["level"]
+            x = torch.Tensor([coor.iloc[c]["x"]])
+            y = W - torch.Tensor([coor.iloc[c]["y"]])
+            z = D - torch.Tensor([coor.iloc[c]["instance_number"]])
             k = leveld[level]
-            patch = vol[max(0, x-32):min(H-1, x+32),
-                        max(0, y-32):min(W-1, y+32),
-                        max(0, z-4), min(D-1, z+4)]
+            patch = vol[max(0, int(x-64)):min(H-1, int(x+64)),
+                        max(0, int(y-64)):min(W-1, int(y+64)),
+                        max(0, int(z-8)):min(D-1, int(z+8))]
             
-            datad{LEVELS[k]} = patch
+            datad[LEVELS[k]] = patch
             
             
         if self.transform is not None:
@@ -207,3 +209,85 @@ class RSNAPatchDataset(Dataset):
             return self.transform(datad)    
         
         return datad
+    
+if __name__=="__main__":
+    coordinates = pd.read_csv("./data/train_label_coordinates.csv")
+    
+    with open("./config/config.yml", "r") as f:
+        config = yaml.safe_load(f)
+
+    folder = config["folder"]
+    exclude_file = config["exclude_file"]
+    
+    # Sequence type
+    seqtype = config["seqtype"]
+
+    # Transform parameters
+    LEVELS = config["levels"]
+
+    # Dictionary mapping sequence type (contrast + orientation) to the associated condition.
+
+    seq2cond = {
+        "sag-T1": [
+            "left_neural_foraminal_narrowing",
+            "right_neural_foraminal_narrowing",
+        ],
+        "sag-T2": ["spinal_canal_stenosis"],
+        "ax-T2": ["left_subarticular_stenosis", "right_subarticular_stenosis"],
+    }
+
+    text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
+    id_label = pd.read_csv("./data/train.csv")
+    
+
+    cond_lev = ["study_id"]
+
+    CONDITIONS = seq2cond[seqtype]
+
+    for level in LEVELS:
+        for cond in CONDITIONS:
+            cond_lev.append(cond + "_" + level)
+
+    # print(cond_lev)
+    id_label = id_label[cond_lev]
+    id_label = id_label.dropna()
+    id_label = id_label.replace(text2int)
+    study_ids = id_label.values[:, 0].astype(int)  # store id of each subject
+    
+    train_id, val_id = train_test_split(study_ids, test_size=0.3, random_state=42)
+    val_id, test_id = train_test_split(val_id, test_size=0.5, random_state=42)
+   
+    print(study_ids)
+    
+    exclude = list(np.load(exclude_file))
+
+    transform = Compose(
+        [
+            Resized(keys=["image", "label"],
+                    spatial_size=(20, 512, 512),
+                    mode=["bilinear", "nearest"]
+            ),
+            NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
+        ]
+    )
+    
+    data = RSNAPatchDataset(
+        root_dir=folder,
+        study_ids=test_id,
+        seqtype=seqtype,
+        cond = "Left Neural Foraminal Narrowing",
+        coordinates=coordinates,
+        label_df=id_label,
+        exclude=exclude,
+        transform=None,
+    )
+    
+    print("Lenght of dataset", len(data))
+    
+    idx = np.random.randint(len(data))
+    batch_data = data.__getitem__(idx)
+    print(batch_data["L1/L2"].shape)
+    plt.figure()
+    plt.imshow(batch_data["L5/S1"][:,:,4], cmap="gray")
+    plt.savefig("test.png")
+    

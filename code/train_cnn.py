@@ -309,11 +309,11 @@ def main():
                 LoadImaged(keys=["image"]),
                 EnsureChannelFirstd(keys=["image"]),
                 Orientationd(keys=["image"], axcodes=orientation),
-                # Spacingd(
-                #     keys=["image"],
-                #     pixdim=pixdim,
-                #     mode=interp_mode,
-                # ),
+                Spacingd(
+                    keys=["image"],
+                    pixdim=pixdim,
+                    mode=interp_mode,
+                ),
                 Resized(keys=["image"],
                         spatial_size=resize
                 ),
@@ -328,11 +328,11 @@ def main():
                 LoadImaged(keys=["image"]),
                 EnsureChannelFirstd(keys=["image"]),
                 Orientationd(keys=["image"], axcodes=orientation),
-                # Spacingd(
-                #     keys=["image"],
-                #     pixdim=pixdim,
-                #     mode=interp_mode,
-                # ),
+                Spacingd(
+                    keys=["image"],
+                    pixdim=pixdim,
+                    mode=interp_mode,
+                ),
                 Resized(keys=["image"],
                         spatial_size=resize
                 ),
@@ -432,11 +432,11 @@ def main():
         
         plt.figure()
         plt.plot(list(range(epochs)), epoch_loss_values)
+        plt.plot(list(range(epochs)), metric_values)
+        plt.legend(["training", "validation"])
         plt.savefig("Training_losses.png")
         plt.figure()
-        plt.plot(list(range(epochs)), metric_values)
-        plt.savefig("Validation_losses.png")
-
+        
         # Save losses, evaluation metric
 
         # np.save("epoch-loss-values.npy", np.array(epoch_loss_values))
