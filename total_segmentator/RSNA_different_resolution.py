@@ -85,6 +85,10 @@ def iterate_and_resample_bids_anat_files(base_dir):
     for subject in subjects:
         # Define the anat directory for the current subject
         anat_dir = os.path.join(subject, 'anat')
+        # if not exist create directories for resampled and non-resampled images
+        os.makedirs(os.path.join(anat_dir, 'non-resampled'), exist_ok=True)
+        os.makedirs(os.path.join(anat_dir, 'resampled'), exist_ok=True)
+
         non_resampled = os.path.join(anat_dir, 'non-resampled')
         resampled = os.path.join(anat_dir, 'resampled')
 
