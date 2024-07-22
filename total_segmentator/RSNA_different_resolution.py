@@ -99,6 +99,7 @@ def iterate_and_resample_bids_anat_files(base_dir):
 
                 # Load the NIfTI image
                 img = nib.load(nii_file)
+                output_path = ''
 
                 # if the nii_file ends with T1w.nii.gz, save the current voxel size for list:
                 if nii_file.endswith('T1w.nii.gz'):
