@@ -220,7 +220,7 @@ class UNetDataset(Dataset):
 if __name__=="__main__":
     coordinates = pd.read_csv("./data/train_label_coordinates.csv")
     
-    with open("config.yml", "r") as f:
+    with open("config/config.yml", "r") as f:
         config = yaml.safe_load(f)
 
     folder = config["folder"]
@@ -266,7 +266,7 @@ if __name__=="__main__":
    
     print(study_ids)
     
-    exclude = list(np.load("exclude.npy"))
+    exclude = list(np.load("data/exclude.npy"))
 
     transform = Compose(
         [
