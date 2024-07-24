@@ -85,12 +85,6 @@ def iterate_and_resample_bids_anat_files(base_dir):
     for subject in subjects:
         # Define the anat directory for the current subject
         anat_dir = os.path.join(subject, 'anat')
-        # if not exist create directories for resampled and non-resampled images
-        os.makedirs(os.path.join(anat_dir, 'non-resampled'), exist_ok=True)
-        os.makedirs(os.path.join(anat_dir, 'resampled'), exist_ok=True)
-
-        non_resampled = os.path.join(anat_dir, 'non-resampled')
-        resampled = os.path.join(anat_dir, 'resampled')
 
         # Check if the anat directory exists
         if os.path.exists(anat_dir):
@@ -98,6 +92,14 @@ def iterate_and_resample_bids_anat_files(base_dir):
             nii_files = glob.glob(os.path.join(anat_dir, '*.nii.gz'))
 
             for nii_file in nii_files:
+                # if nii_file ends with "resampled.nii.gz" create folder for resampled images
+                if nii_file.endswith('resampled.nii.gz'):
+                    os.makedirs(os.path.join(anat_dir, f'{nii_file[:-7]}_resampled'), exist_ok=True)
+                    folder_seg = os.path.join(anat_dir, f'{nii_file[:-7]}_resampled')
+                else:
+                    os.makedirs(os.path.join(anat_dir, f'{nii_file[:-7]}_non-resampled'), exist_ok=True)
+                    folder_seg = os.path.join(anat_dir, f'{nii_file[:-7]}_non-resampled')
+
                 # Print the current file being processed
                 print(f"Processing {nii_file}")
 
@@ -131,8 +133,8 @@ def iterate_and_resample_bids_anat_files(base_dir):
                 # Construct the TotalSegmentator command - for non-resampled image
                 command = [
                     'TotalSegmentator',
-                    '-i', output_path,
-                    '-o', non_resampled,
+                    '-i', nii_file,
+                    '-o', folder_seg,
                     '--task', 'total_mr'
                 ]
 
@@ -140,18 +142,6 @@ def iterate_and_resample_bids_anat_files(base_dir):
                 print(f"Running TotalSegmentator for file: {resampled_img}")
                 subprocess.run(command, check=True)
 
-                # Construct the TotalSegmentator command - for resampled image
-                command = [
-                    'TotalSegmentator',
-                    '-i', nii_file,
-                    '-o', resampled,
-                    '--task', 'total_mr'
-                ]
-                #
-                # Run the TotalSegmentator command
-                print(f"Running TotalSegmentator for file: {nii_file}")
-                subprocess.run(command, check=True)
-                #
                 print(f"Segmentation completed for file: {nii_file}, saved in {output_path_seg}")
 
 
