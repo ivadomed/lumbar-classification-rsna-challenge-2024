@@ -86,7 +86,6 @@ class RSNADataset(Dataset):
             return datad
         
         
-        
 class UNetDataset(Dataset):
     """
     Build a monai dataset, given a data folder containing volumes, 
@@ -242,6 +241,10 @@ if __name__=="__main__":
         "ax-T2": ["left_subarticular_stenosis", "right_subarticular_stenosis"],
     }
 
+    condition = seq2cond[seqtype][0].replace("_", " ").title()
+    print("Condition :", condition)
+    print("Sequence type :", seqtype)
+
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     id_label = pd.read_csv("./data/train.csv")
     
@@ -278,16 +281,26 @@ if __name__=="__main__":
         ]
     )
     
+    # data = UNetDataset(
+    #     root_dir=folder,
+    #     study_ids=test_id,
+    #     seqtype=seqtype,
+    #     coordinates=coordinates,
+    #     cond = "Left Neural Foraminal Narrowing",
+    #     exclude=exclude,
+    #     transform=transform,
+    # )
+
     data = UNetDataset(
         root_dir=folder,
         study_ids=test_id,
         seqtype=seqtype,
         coordinates=coordinates,
-        cond = "Left Neural Foraminal Narrowing",
+        cond = condition,
         exclude=exclude,
         transform=transform,
     )
-    
+
     print("Lenght of dataset", len(data))
 
     idx = np.random.randint(len(data))
@@ -302,72 +315,79 @@ if __name__=="__main__":
     print(np.unique(dmap))
     p=.5
     fig, ax = plt.subplots(ncols=2)
-    ax[0].imshow(vol[0,0,:,:])
-    ax[1].imshow((dmap[0,5,:,:]+dmap[1,5,:,:]+dmap[2,5,:,:]+dmap[3,5,:,:]+dmap[4,5,:,:]))
+    ax[0].imshow(vol[0,8,:,:])
+    idxs = []
+    dmap = dmap.numpy()
+    print(dmap.shape)
+    for i in range(5):
+        print(dmap.sum(axis=(0, 2, 3)).shape)
+        idx = dmap.sum(axis=(0, 2, 3)).argmax()
+        idxs.append(idx)
+    ax[1].imshow(vol[0,8,:,:] + 10*(dmap[0,idxs[0],:,:]+dmap[1,idxs[1],:,:]+dmap[2,idxs[2],:,:]+dmap[3,idxs[3],:,:]+dmap[4,idxs[4],:,:]))
                 
     plt.savefig("test.png")
-    gpu = config["gpu"]
-    device = torch.device(gpu if torch.cuda.is_available() else "cpu")
+    # gpu = config["gpu"]
+    # device = torch.device(gpu if torch.cuda.is_available() else "cpu")
     
-    model = BasicUNet(spatial_dims=3, 
-                      in_channels=1, 
-                      out_channels=5).to(device)
+    # model = BasicUNet(spatial_dims=3, 
+    #                   in_channels=1, 
+    #                   out_channels=5).to(device)
 
-    model.load_state_dict(torch.load("best_metric_model_unet2.pth"))
-    model.eval()
+    # model.load_state_dict(torch.load("best_metric_model_unet2.pth"))
+    # model.eval()
     
-    pred = model(vol[None].to(device))
-    pred = torch.sigmoid(pred)>.5
-    pred = pred.detach().cpu().numpy()
+    # pred = model(vol[None].to(device))
+    # pred = torch.sigmoid(pred)>.5
+    # pred = pred.detach().cpu().numpy()
     
-    # fig, ax = plt.subplots(ncols=2)
-    # ax[0].imshow(vol[0,0,:,:])
-    plt.figure()
+    # # fig, ax = plt.subplots(ncols=2)
+    # # ax[0].imshow(vol[0,0,:,:])
+    # plt.figure()
     
-    _, D, H, W = vol.shape
-    # vol = vol.repeat(1, D, H, W, 3) # gray
+    # _, D, H, W = vol.shape
+    # # vol = vol.repeat(1, D, H, W, 3) # gray
     
-    colors = [[255, 255, 178], # L1/L2
-              [254, 204, 92],  # L2/L3
-              [253, 141, 60],  # L3/L4
-              [240, 59, 32],   # L4/L5
-              [189, 0, 38]]    # L5/S1
+    # colors = [[255, 255, 178], # L1/L2
+    #           [254, 204, 92],  # L2/L3
+    #           [253, 141, 60],  # L3/L4
+    #           [240, 59, 32],   # L4/L5
+    #           [189, 0, 38]]    # L5/S1
     
         
-    _, C, D, H, W = pred.shape
-    pred_map = np.zeros((C, D, H, W, 3)).astype(int)
-    true_map = np.zeros((C, D, H, W, 3)).astype(int)
+    # _, C, D, H, W = pred.shape
+    # pred_map = np.zeros((C, D, H, W, 3)).astype(int)
+    # true_map = np.zeros((C, D, H, W, 3)).astype(int)
     
-    print(dmap.min(), dmap.max())
+    # print(dmap.min(), dmap.max())
     
-    for i in range(5):
-        for j in range(3):
-            pred_map[i,:,:,:,j] = pred[0,i]*colors[i][j]
+    # for i in range(5):
+    #     for j in range(3):
+    #         pred_map[i,:,:,:,j] = pred[0,i]*colors[i][j]
             
-    for i in range(5):
-        for j in range(3):
-            true_map[i,:,:,:,j] = dmap[i]*colors[i][j] 
+    # for i in range(5):
+    #     for j in range(3):
+    #         true_map[i,:,:,:,j] = dmap[i]*colors[i][j] 
     
-    fig, ax = plt.subplots(ncols=3) 
-    ax[0].imshow(vol[0,11,:,:])
-    ax[0].set_title("Random slice of volume")
+    # fig, ax = plt.subplots(ncols=3) 
+    # ax[0].imshow(vol[0,11,:,:])
+    # ax[0].set_title("Random slice of volume")
     
-    ax[1].imshow(pred_map[0,5,:,:]+pred_map[1,5,:,:]+pred_map[2,5,:,:]+pred_map[3,5,:,:]+pred_map[4,5,:,:])
-    ax[1].set_title("Prediction")
+    # ax[1].imshow(pred_map[0,5,:,:]+pred_map[1,5,:,:]+pred_map[2,5,:,:]+pred_map[3,5,:,:]+pred_map[4,5,:,:])
+    # ax[1].set_title("Prediction")
     
-    print(true_map.shape)
-    idxs = []
-    for i in range(5):
-        print(true_map.sum(axis=(0, 2, 3, 4)).shape)
-        idx = true_map.sum(axis=(0, 2, 3, 4)).argmax()
-        print(idx, true_map.sum(axis=(0, 2, 3, 4))[idx])
-        idxs.append(idx)
-    ax[2].imshow(true_map[0,idxs[0],:,:]+true_map[1,idxs[1],:,:]+true_map[2,idxs[2],:,:]+true_map[3,idxs[3],:,:]
-                 +true_map[4,idxs[4],:,:])
-    ax[2].set_title("Ground truth")
+    # print(true_map.shape)
+    # idxs = []
+    # for i in range(5):
+    #     print(true_map.sum(axis=(0, 2, 3, 4)).shape)
+    #     idx = true_map.sum(axis=(0, 2, 3, 4)).argmax()
+    #     print(idx, true_map.sum(axis=(0, 2, 3, 4))[idx])
+    #     idxs.append(idx)
+    # ax[2].imshow(true_map[0,idxs[0],:,:]+true_map[1,idxs[1],:,:]+true_map[2,idxs[2],:,:]+true_map[3,idxs[3],:,:]
+    #              +true_map[4,idxs[4],:,:])
+    # ax[2].set_title("Ground truth")
 
         
-    plt.savefig("result.png")
+    # plt.savefig("result.png")
     
     # print(vol.shape)
     # B, D, H, W = vol.shape
