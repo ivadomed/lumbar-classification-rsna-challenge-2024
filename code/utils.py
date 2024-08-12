@@ -2,6 +2,7 @@ import pydicom as dicom
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import cv2
 import torch
 
 def get_bounding_box1(points):
@@ -85,6 +86,30 @@ def get_bounding_box2(img, points):
             
     return bbox
 
+def get_angle(points):
+    # points = sorted(points, key=lambda p: (p[0], p[1]))
+    p1 = points[0]
+    p2 = points[1]
+    y = np.abs(p1[1] - p2[1])
+    x = np.abs(p1[0] - p2[0])
+    theta = np.arctan(y/x)
+    
+    return np.degrees(theta)
+
+def rotate_image(image, angle):
+    (h, w) = image.shape[:2]
+    center = (w // 2, h // 2)
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+    rotated_image = cv2.warpAffine(image, M, (w, h))
+    
+    return rotated_image, M
+
+def rotate_landmarks(landmarks, M):
+    ones = np.ones(shape=(len(landmarks), 1))
+    landmarks_homogeneous = np.hstack([landmarks, ones])
+    rotated_landmarks = M.dot(landmarks_homogeneous.T).T
+    return rotated_landmarks
+
 if __name__=="__main__":
     description = pd.read_csv("./data/train_series_descriptions.csv")
     train = pd.read_csv("./data/train.csv")
@@ -152,4 +177,30 @@ if __name__=="__main__":
     print(f"subject {study_id} Sagittal T2")
 
     plt.savefig("bbox.png")
+    plt.show()
+    
+    # Extract patch after rotation    
+    theta = get_angle(bbox1[0])
+    rotated_img, M = rotate_image(img.pixel_array, theta)
+    rotated_landmarks = rotate_landmarks(bbox1[0], M)
+    rotated_landmarks = list(rotated_landmarks)
+    rotated_landmarks.append(rotated_landmarks[0])
+    rotated_landmarks = np.array(rotated_landmarks).astype(int)
+
+    i1 = np.min(rotated_landmarks[:,1])
+    i2 = np.max(rotated_landmarks[:,1])
+    j1 = np.min(rotated_landmarks[:,0])
+    j2 = np.max(rotated_landmarks[:,0])
+    
+    fig, ax = plt.subplots(ncols=2, figsize=(10, 5))
+    ax[0].imshow(rotated_img, cmap="gray")
+    ax[0].plot(rotated_landmarks[:,0], rotated_landmarks[:,1])
+    ax[0].legend(["L1/L2"])
+    ax[0].axis("off")
+    ax[1].imshow(rotated_img[i1:i2,j1:j2], cmap="gray")
+    ax[1].axis("off")
+    ax[1].set_title("Extracted patch for L1/L2")
+    print(f"subject {study_id} Sagittal T2")
+
+    plt.savefig("patch_extraction.png")
     plt.show()
