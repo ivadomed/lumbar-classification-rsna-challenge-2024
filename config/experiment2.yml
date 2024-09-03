@@ -1,8 +1,10 @@
 folder: ./data/bids-rsna-lscd
 seqtype: sag-T2
-lr: 0.0001 # 0.0001
-epochs: 12
-batch_size: 2
+lr: 0.001 # 0.0001
+epochs: 20
+val_interval : 1
+batch_size: 1
+experiment : 2
 levels: 
   - l1_l2
   - l2_l3

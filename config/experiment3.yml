@@ -1,15 +1,17 @@
 folder: ./data/bids-rsna-lscd
 seqtype: sag-T2
-lr: 0.0001 # 0.0001
-epochs: 12
-batch_size: 2
+lr: 0.001 # 0.0001
+epochs: 22  
+val_interval : 1
+batch_size: 4
+experiment : 3
 levels: 
   - l1_l2
   - l2_l3
   - l3_l4
   - l4_l5
   - l5_s1
-gpu: cuda:3 #cuda:3
+gpu: cuda:3 #cuda:3d
 orientation: RSP
 pixdim: 
   - 0.6
