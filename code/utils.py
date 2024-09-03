@@ -5,7 +5,8 @@ import numpy as np
 import cv2
 import torch
 
-def get_bounding_box1(points):
+def get_bounding_box1(points, a=1.1, b = 0.6):
+    """Boxes with sides following spine curve"""
     n = len(points)
     bbox = np.zeros((n, 4, 2))
     
@@ -16,10 +17,10 @@ def get_bounding_box1(points):
             v = np.array([-points[i+1][1] + points[i][1], points[i+1][0] - points[i][0]])
             v /= np.linalg.norm(v)
             
-            bbox[i, 0] = points[i] + u/2 + 2*v*dist
-            bbox[i, 1] = points[i] + u/2 - 2*v*dist
-            bbox[i, 2] = points[i] - u/2 - 2*v*dist
-            bbox[i, 3] = points[i] - u/2 + 2*v*dist
+            bbox[i, 0] = points[i] + a*u/2 + 2*b*v*dist 
+            bbox[i, 1] = points[i] + a*u/2 - 2*b*v*dist 
+            bbox[i, 2] = points[i] - a*u/2 - 2*b*v*dist 
+            bbox[i, 3] = points[i] - a*u/2 + 2*b*v*dist 
         
         elif i<n-1:
             
@@ -28,10 +29,10 @@ def get_bounding_box1(points):
             v = np.array([-points[i+1][1] + points[i-1][1], points[i+1][0] - points[i-1][0]])
             v /= np.linalg.norm(v)
             
-            bbox[i, 0] = points[i] + u/4 + v*dist
-            bbox[i, 1] = points[i] + u/4 - v*dist
-            bbox[i, 2] = points[i] - u/4 - v*dist
-            bbox[i, 3] = points[i] - u/4 + v*dist
+            bbox[i, 0] = points[i] + a*u/4 + b*v*dist
+            bbox[i, 1] = points[i] + a*u/4 - b*v*dist
+            bbox[i, 2] = points[i] - a*u/4 - b*v*dist
+            bbox[i, 3] = points[i] - a*u/4 + b*v*dist
 
         if i==n-1:
             dist = np.linalg.norm(points[i] - points[i-1]) 
@@ -39,12 +40,12 @@ def get_bounding_box1(points):
             v = np.array([-points[i][1] + points[i-1][1], points[i][0] - points[i-1][0]])
             v /= np.linalg.norm(v)
             
-            bbox[i, 0] = points[i] + u/2 + 2*v*dist
-            bbox[i, 1] = points[i] + u/2 - 2*v*dist
-            bbox[i, 2] = points[i] - u/2 - 2*v*dist
-            bbox[i, 3] = points[i] - u/2 + 2*v*dist
+            bbox[i, 0] = points[i] + a*u/2 + 2*b*v*dist
+            bbox[i, 1] = points[i] + a*u/2 - 2*b*v*dist
+            bbox[i, 2] = points[i] - a*u/2 - 2*b*v*dist
+            bbox[i, 3] = points[i] - a*u/2 + 2*b*v*dist
             
-    return bbox 
+    return bbox #.astype(int)
 
 def get_bounding_box2(img, points):
     h, w = img.shape
@@ -85,6 +86,11 @@ def get_bounding_box2(img, points):
         
             
     return bbox
+
+def get_sign(points):
+    u = np.array([0, 1])
+    v = points[1] - points[0]
+    return np.sign(u.dot(v))
 
 def get_angle(points):
     # points = sorted(points, key=lambda p: (p[0], p[1]))
@@ -128,7 +134,8 @@ if __name__=="__main__":
             "ax-T2": ["left_subarticular_stenosis", "right_subarticular_stenosis"],
         }
     
-    study_id = 3832874334 # good example
+    # study_id = 3832874334 # good example
+    study_id = np.random.choice(study_ids)
     X, Y = [], []
     for (study_id, 
         series_id, 
@@ -193,7 +200,7 @@ if __name__=="__main__":
     j2 = np.max(rotated_landmarks[:,0])
     
     fig, ax = plt.subplots(ncols=2, figsize=(10, 5))
-    ax[0].imshow(rotated_img, cmap="gray")
+    ax[0].imshow(rotated_img**.7, cmap="gray")
     ax[0].plot(rotated_landmarks[:,0], rotated_landmarks[:,1])
     ax[0].legend(["L1/L2"])
     ax[0].axis("off")

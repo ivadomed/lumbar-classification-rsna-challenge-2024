@@ -1,17 +1,22 @@
 import pandas as pd
 from tqdm import tqdm
 import glob
+import os
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
+import pydicom as dicom
 import torch
+from utils import *
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
     LoadImage, 
     LoadImaged,
     Spacingd,
+    Orientation,
     Orientationd,
     EnsureChannelFirstd,
+    EnsureChannelFirst,
     Compose,
     Resized,
     NormalizeIntensityd
@@ -64,7 +69,7 @@ class RSNADataset(Dataset):
                         print(label)
                     self.labels.append(label)
                     
-                except IndexError:
+                except :
                     pass
         
     def __len__(self):
@@ -95,156 +100,145 @@ class RSNADataset(Dataset):
         else:            
             return datad
         
-        
 class RSNAPatchDataset(Dataset):
     """
-    Build a torch dataset, given a data folder containing volumes, a contrast and a dataframe of labels.
-    The data folder must respect BIDS convention.
-    
-    Args
-    ------
-    root_dir : str, name of the data folder
-    study_ids : list, list of subject ids included in the dataset
-    seqtype : str, name of the sequence type considered. among ["sag-T1", "sag-T2", "ax-T2"]
-    cond : str, name of the condition considered
-    label_df : pd.DataFrame, dataframe with labels of each subject
-    coordinates : pd.DataFrame, dataframe with center coordinates for diagnosis
-    exclude : list (optional), list of subjects to exclude    
+    ...
     """
-    def __init__(self, root_dir : str, 
-                 study_ids : list, 
-                 seqtype : str, 
-                 cond : str,
-                 label_df : pd.DataFrame, 
-                 coordinates : pd.DataFrame, 
-                 exclude : list = None, 
-                 transform : any = None):
-                
-        orientation, contrast = seqtype.split("-")
+    def __init__(self,
+                 root_dir : str = None,
+                 study_ids : list = None,
+                 contrast : str = None,
+                 description : pd.DataFrame = None,
+                 coordinates : pd.DataFrame = None, 
+                 labels : pd.DataFrame = None,
+                 exclude : list = None,
+                 transform : any = None
+                 ): 
         
-        self.transform = transform
-        self.cond = cond
         self.study_ids = []
-        self.series_ids = []
-        self.images_paths = []
+        self.images_paths = [] 
+        self.coordinates = [] 
         self.labels = []
-        self.centers = []
+        self.instance_numbers = []
+        self.transform = transform
         
-        # Storing paths to volumes
         for i, study_id in tqdm(enumerate(study_ids)):
             
             # print(study_id)
             pursuie = True
             if exclude is not None:
                 for sub in exclude : 
-                    if str(study_id) in sub:
+                    if str(study_id) in str(sub):
                         pursuie = False 
             
             if pursuie:
-                paths = glob.glob(root_dir+"/sub-"+str(study_id)+"/anat/*"+orientation+"*"+contrast+"*.nii.gz")
                 try :
-                    path = paths[0]
-                    series_id = path.split("_")[2][3:]
-                    label = label_df[label_df["study_id"]==study_id] #.values[0, 1:].astype(int)
-                                  
-                    coor = coordinates[coordinates["series_id"]==int(series_id)][["series_id", 
-                                                                                   "study_id", 
-                                                                                   "condition",
-                                                                                   "instance_number", 
-                                                                                   "level", 
-                                                                                   "x", 
-                                                                                   "y"]]
-                    coor = coor[coor["condition"]==cond]
+                    if contrast=="t1":
+                        series_id = description[(description["study_id"] ==study_id) & (description["series_description"]=="Sagittal T1")]["series_id"].values[0]
+                    elif contrast=="t2":
+                        series_id = description[(description["study_id"] ==study_id) & (description["series_description"]=="Sagittal T2/STIR")]["series_id"].values[0]                      
+                                           
+                    X, Y = [], []
+                    Z = []
+                    if contrast=="t2":
+                        for _, _, instance_number, _, _, x, y in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Spinal Canal Stenosis")].values:
+                            X.append(x)
+                            Y.append(y)
+                            Z.append(instance_number)
+                                                
+                    elif contrast=="t1":
+                        for _, _, instance_number, _, _, x, y in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Left Neural Foraminal Narrowing")].values:
+                            X.append(x)
+                            Y.append(y)
+                            Z.append(instance_number)
+                            
+                    label = labels[labels["study_id"]==study_id].values[0, 1:].astype(int)
+                    if label.min() < 0 or label.max() > 2 :
+                        print(study_id)
+                        print(label)
                     
-                    if len(coor)==5:
-                        self.centers.append(coor)
-                        self.labels.append(label)
+                    if len(X)==5:
+                        path = root_dir + str(study_id) + "/" + str(series_id)
                         self.study_ids.append(study_id)
                         self.images_paths.append(path) 
-                        self.series_ids.append(series_id)                       
+                        self.coordinates.append((X, Y))
+                        self.instance_numbers.append(Z)
+                        self.labels.append(label)
+                        
                 except IndexError:
                     pass
         
-    def __len__(self):
-        return len(self.study_ids)
-        
-    def __getitem__(self, index):
-        LEVELS = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
-        leveld = {"L1/L2": 0, "L2/L3": 1, "L3/L4": 2, "L4/L5": 3, "L5/S1": 4}
-        path2vol = self.images_paths[index]
-        id = self.study_ids[index]
-        series_id = self.series_ids[index]
-        coor = self.centers[index]
-        
-        if self.transform is not None:
-            
-            vol = LoadImage()(path2vol)
-            h, w, d = vol.shape
-            vol = self.transform({"image": path2vol})
-            vol = vol["image"]
-            _, D, W, H = vol.shape
-            alphas = np.zeros(3)
-            alphas[0] = H/h
-            alphas[1] = W/w
-            alphas[2] = D/d
+        return
     
-        else :
-            vol = LoadImage()(path2vol)    
-            H, W, D = vol.shape
-           
-        # print(label)
-        C = len(coor)         
-        label = self.labels[index]
+    def __len__(self):
+        return len(self.images_paths)
+    
+    def __getitem__(self, idx):
+        label = torch.Tensor(self.labels[idx]).to(torch.long)
+        study_id = self.study_ids[idx]
         
-        y = torch.zeros(5).to(int)
-        levels = ["l1_l2", "l2_l3", "l3_l4", "l4_l5", "l5_s1"]
-        for i, lvl in enumerate(levels):
-            # print(id, lvl)
-            # print(self.cond.lower().replace(" ", "_")+"_"+lvl)
-            # print(label[self.cond.lower().replace(" ", "_")+"_"+lvl].values.astype(int))
-            y[i] = label[self.cond.lower().replace(" ", "_")+"_"+lvl].values.astype(int)[0]
+        patches = {"L1/L2": 0, "L2/L3": 0, "L3/L4": 0, "L4/L5": 0, "L5/S1": 0}
+        levels = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
         
-        datad = {"label" : y,
-                 "L1/L2": None,
-                 "L2/L3": None,
-                 "L3/L4": None,
-                 "L4/L5": None,
-                 "L5/S1": None,
-                 "study_id": id, 
-                 "series_id": series_id}
-
-        # Extract patches
+        X, Y = self.coordinates[idx]
+        Z = self.instance_numbers[idx]
+        path = self.images_paths[idx]
+        n = len(os.listdir(path))
+        middle_slice = dicom.read_file(path + "/" + str(n // 2) + ".dcm")
         
-        for c in range(C):
-            level = coor.iloc[c]["level"]
+        tmps = sorted(list(zip(X, Y)), key=lambda x : x[1])
+        points = []
+        for p in tmps:
+            points.append(np.array(p))
             
-            k = leveld[level]
-            if self.transform is not None:
-                x = torch.Tensor([coor.iloc[c]["x"]])
-                y = torch.Tensor([coor.iloc[c]["y"]])
-                z = torch.Tensor([coor.iloc[c]["instance_number"]])
+        bbox = get_bounding_box1(points)
+        
+        for P in bbox:
+            P = list(P)
+            P.append(P[0])
+            P = np.array(P)
                 
-                X, Y, Z = alphas[0]*x, alphas[1]*y, alphas[2]*z
-                # print(X, Y, Z)
-                # print(vol.shape)
-                # print(alphas)
-                patch = vol[:,
-                            max(0, int(Z-8)):min(D-1, int(Z+8)),    # R/L
-                            max(0, int(Y-64)):min(W-1, int(Y+64)),  # S/I
-                            max(0, int(X-64)):min(H-1, int(X+64))]  # P/A
-                
-                datad[LEVELS[k]] = patch
-                
-            else :
-                x = torch.Tensor([coor.iloc[c]["x"]])
-                y = W - torch.Tensor([coor.iloc[c]["y"]])
-                z = D - torch.Tensor([coor.iloc[c]["instance_number"]])
-                patch = vol[max(0, int(x-32)):min(H-1, int(x+32)),  # A
-                            max(0, int(y-32)):min(W-1, int(y+32)),  # I
-                            max(0, int(z-8)):min(D-1, int(z+8))]    # L
-                datad[LEVELS[k]] = patch
-                
-        return datad
+        for i in range(5):
+            
+            theta = get_angle(bbox[i])
+            s = get_sign(bbox[i])    
+            img = dicom.read_file(path + "/" + str(n//2) + ".dcm")  
+            rotated_img, M = rotate_image(img.pixel_array, s*theta)      
+            rotated_landmarks = rotate_landmarks(bbox[i], M)
+            rotated_landmarks = list(rotated_landmarks)
+            rotated_landmarks.append(rotated_landmarks[0])
+            rotated_landmarks = np.array(rotated_landmarks).astype(int)      
+            
+            i1 = np.min(rotated_landmarks[:,1])
+            i2 = np.max(rotated_landmarks[:,1])
+            j1 = np.min(rotated_landmarks[:,0])
+            j2 = np.max(rotated_landmarks[:,0])
+
+            patch = np.zeros((n, i2-i1, j2-j1))
+            for j in range(n):
+                img = dicom.read_file(path + "/" + str(j+1) + ".dcm")
+                w, h = img.pixel_array.shape
+                rotated_img, M = rotate_image(img.pixel_array, s*theta)
+                rotated_landmarks = rotate_landmarks(bbox[i], M)
+                rotated_landmarks = list(rotated_landmarks)
+                rotated_landmarks.append(rotated_landmarks[0])
+                rotated_landmarks = np.array(rotated_landmarks).astype(int)      
+                i1 = np.min(rotated_landmarks[:,1])
+                i2 = np.max(rotated_landmarks[:,1])
+                j1 = np.min(rotated_landmarks[:,0])
+                j2 = np.max(rotated_landmarks[:,0])
+                 
+            try :
+                patch[j] = rotated_img[i1:i2,j1:j2]
+                patches[levels[i]] = torch.Tensor(patch[None]).to(torch.float)
+            except :
+                print(study_id)
+                print("value error")
+            
+        if self.transform is not None:
+            patches = self.transform(patches)
+        
+        return patches, label, study_id
 
 class CustomDataset(Dataset):
     def __init__(self, root_dir : str, 
@@ -298,6 +292,169 @@ class CustomDataset(Dataset):
         
         return
 
+class UNetDataset(Dataset):
+    """
+    Build a monai dataset, given a data folder containing volumes, 
+    a contrast and a dataframe of labels.
+    The getitem method returns the volume and density maps corresponding 
+    to levels region to be considered during a diagnosis.
+    The data folder must respect BIDS convention.
+    
+    Args
+    ------
+    root_dir : str, name of the data folder
+    study_ids : list, list of subject ids included in the dataset
+    contrast : str, name of the contrast considered. among ["T1", "T2"]
+    orientation : str, name of the orientation. among ["ax", "sag"]
+    label_df : pd.DataFrame, dataframe with labels of each subject
+    exclude : list (optional), list of subjects to exclude    
+    """
+    def __init__(self, 
+                 root_dir : str, 
+                 study_ids : list, 
+                 description : pd.DataFrame,
+                 coordinates : pd.DataFrame, 
+                 exclude : list = None, 
+                 transform : any = None):
+                        
+        self.transform = transform
+        self.study_ids = []
+        self.images_paths = [] # tuple (Sag T1, Sag T2/STIR) volume path
+        self.labels = [] # Array of points of size 10 x 2
+        
+        # Storing paths to volumes
+        for i, study_id in tqdm(enumerate(study_ids)):
+            
+            # print(study_id)
+            pursuie = True
+            if exclude is not None:
+                for sub in exclude : 
+                    if str(study_id) in sub:
+                        pursuie = False 
+            
+            if pursuie:
+                try :
+                    t1_id = description[(description["study_id"] ==study_id) & (description["series_description"]=="Sagittal T1")]["series_id"].values[0]
+                    t2_id = description[(description["study_id"] ==study_id) & (description["series_description"]=="Sagittal T2/STIR")]["series_id"].values[0]
+                    
+                                           
+                    label_t1 = coordinates[coordinates["series_id"]==t1_id][["series_id", 
+                                                                                   "study_id", 
+                                                                                   "condition",
+                                                                                   "instance_number", 
+                                                                                   "level", 
+                                                                                   "x", 
+                                                                                   "y"]]
+                    
+                    label_t2 = coordinates[coordinates["series_id"]==t2_id][["series_id", 
+                                                                                   "study_id", 
+                                                                                   "condition",
+                                                                                   "instance_number", 
+                                                                                   "level", 
+                                                                                   "x", 
+                                                                                   "y"]]
+                    
+                    label_t1 = label_t1[label_t1["condition"]=="Left Neural Foraminal Narrowing"]
+                    label_t2 = label_t2[label_t2["condition"]=="Spinal Canal Stenosis"]
+                    
+                    # print(study_id, id)
+                    if len(label_t1)==5 and len(label_t2)==5:
+                        path_t1 = root_dir + "train_images./" + str(study_id) + "/" + str(t1_id)
+                        n_t1 = len(os.listdir(path_t1)) // 2
+                        path_t1 += "/" + str(n_t1) + ".dcm"
+                        path_t2 = root_dir + "train_images./" + str(study_id) + "/" + str(t2_id)
+                        n_t2 = len(os.listdir(path_t2)) // 2
+                        path_t2 += "/" + str(n_t2) + ".dcm"
+                        self.labels.append((label_t1, label_t2))
+                        self.study_ids.append(study_id)
+                        self.images_paths.append((path_t1, path_t2)) 
+                
+                except IndexError:
+                    pass
+        
+    def __len__(self):
+        return len(self.study_ids)
+        
+    def __getitem__(self, index):
+        LEVELS = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
+        leveld = {"L1/L2": 0, "L2/L3": 1, "L3/L4": 2, "L4/L5": 3, "L5/S1": 4}
+        # datad = {"image" : None, "label" : None, "study_id" : None}
+        path2vol_t1, path2vol_t2 = self.images_paths[index]
+        
+        id = self.study_ids[index]
+        
+        vol_t1 = dicom.read_file(path2vol_t1)
+        wt1, ht1 = vol_t1.pixel_array.shape
+        vol_t2 = dicom.read_file(path2vol_t2)
+        wt2, ht2 = vol_t2.pixel_array.shape
+        
+        compose = Compose([
+            LoadImage(),
+            EnsureChannelFirst(),
+            # Orientation(axcodes="SP")
+            # Spacing(pixdim=(1, 1, 1))
+            # Resize(spatial_size=(512, 512))
+        ])
+        
+        print("Resolution of dicom :", vol_t1.PixelSpacing)
+        print(vol_t1.pixel_array.shape)
+                
+        vol_t1 = compose(path2vol_t1)
+        vol_t2 = compose(path2vol_t2)
+        
+        _, H, W = vol_t1.shape
+        print(H, W)
+        alpha1 = [H/ht1, W/wt1]
+        alpha2 = [H/ht2, W/wt2]
+        
+        label_t1, label_t2 = self.labels[index]
+        # print(label)
+        C = 5
+        density_map = torch.zeros((2*C, H, W))
+        
+        for c in range(C):
+            level = label_t1.iloc[c]["level"]
+            
+            x_t1 = torch.Tensor([label_t1.iloc[c]["x"]])
+            y_t1 = torch.Tensor([label_t1.iloc[c]["y"]])
+            
+            x_t2 = torch.Tensor([label_t2.iloc[c]["x"]])
+            y_t2 = torch.Tensor([label_t2.iloc[c]["y"]])
+            
+            print(x_t1, y_t1)
+            
+            X = torch.arange(H).view(1, H, 1)
+            Y = torch.arange(W).view(1, 1, W)             
+                      
+            X_t1 = (X- alpha1[0]*x_t1) / H**.5
+            Y_t1= (Y-(W-alpha1[1]*y_t1)) / W**.5
+            
+            X_t2 = (X - alpha2[0]*x_t2) / H**.5
+            Y_t2= (Y-(W - alpha2[1]*y_t2)) / W**.5
+
+            level = label_t1.iloc[c]["level"]
+            k = leveld[level]
+            density_map[k] = (torch.exp(-X_t1**2 - Y_t1**2)>.5)
+            level = label_t2.iloc[c]["level"]
+            k = leveld[level]
+            density_map[k+5] = (torch.exp(-X_t2**2 - Y_t2**2)>.5) 
+
+        if self.transform is not None:
+            vol = vol.view(1, H, W)
+            vol = vol.permute(0, 2, 1)
+            
+            datad = {"image": vol, "label": density_map, "study_id": id, "series_id": series_id}
+            # for c in range(C):
+            #     datad[LEVELS[c]] = density_map[c][None]
+            #     print(type(density_map[c]))
+            return self.transform(datad)    
+        
+        datad = {"image": (vol_t1, vol_t2), 
+                 "label": density_map, 
+                 "study_id": id}
+        
+        return datad           
+    
 if __name__=="__main__":
     
     coordinates = pd.read_csv("./data/train_label_coordinates.csv")
@@ -306,11 +463,10 @@ if __name__=="__main__":
         config = yaml.safe_load(f)
 
     folder = config["folder"]
-    exclude_file = config["exclude_file"]
-    
+    exclude_file = config["exclude_file"]    
     # Sequence type
     seqtype = config["seqtype"]
-
+    
     # resolution
     pixdim = config["pixdim"]
     
@@ -361,22 +517,20 @@ if __name__=="__main__":
             LoadImaged(keys=["image"]),
             EnsureChannelFirstd(keys=["image"]),
             Orientationd(keys=["image"], 
-                         axcodes=orientation),
+                         axcodes="PSL"),
             Spacingd(keys=["image"],
                      pixdim=pixdim),
-            # Resized(keys=["image"],
-            #         spatial_size=(20, 512, 512),
-            #         mode=["bilinear"]
-            #),
             NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
         ]
     )
     
+    condition = seq2cond[seqtype][0].replace("_", " ").title()
+    print(condition)
     data = RSNAPatchDataset(
         root_dir=folder,
         study_ids=test_id,
         seqtype=seqtype,
-        cond = "Left Neural Foraminal Narrowing",
+        cond = condition,
         coordinates=coordinates,
         label_df=id_label,
         exclude=exclude,
@@ -385,13 +539,17 @@ if __name__=="__main__":
     
     print("Lenght of dataset", len(data))
     
+    LEVELS = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
+    
     idx = np.random.randint(len(data))
     batch_data = data.__getitem__(idx)
     print(batch_data["L1/L2"].shape) 
     loader = DataLoader(data)
     for batch_data in tqdm(loader):
         print(batch_data["L1/L2"].shape) 
+        i = np.random.randint(5)
+        lvl = LEVELS[i]
+        c, h, w, d = batch_data[lvl].shape
         plt.figure()
-        plt.imshow(batch_data["L5/S1"][0,:,:,4], cmap="gray")
+        plt.imshow(batch_data[lvl][0,:,:,d//2], cmap="gray")
         plt.savefig("test.png")
-    
