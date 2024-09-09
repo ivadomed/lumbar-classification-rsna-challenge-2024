@@ -107,7 +107,7 @@ class RSNAPatchDataset(Dataset):
     def __init__(self,
                  root_dir : str = None,
                  study_ids : list = None,
-                 contrast : str = None,
+                 seqtype : str = None,
                  description : pd.DataFrame = None,
                  coordinates : pd.DataFrame = None, 
                  labels : pd.DataFrame = None,
@@ -121,6 +121,7 @@ class RSNAPatchDataset(Dataset):
         self.labels = []
         self.instance_numbers = []
         self.transform = transform
+        self.seqtype = seqtype
         
         for i, study_id in tqdm(enumerate(study_ids)):
             
@@ -133,31 +134,53 @@ class RSNAPatchDataset(Dataset):
             
             if pursuie:
                 try :
-                    if contrast=="t1":
+                    if seqtype.endswith("sag-T1"):
                         series_id = description[(description["study_id"] ==study_id) & (description["series_description"]=="Sagittal T1")]["series_id"].values[0]
-                    elif contrast=="t2":
-                        series_id = description[(description["study_id"] ==study_id) & (description["series_description"]=="Sagittal T2/STIR")]["series_id"].values[0]                      
+                    elif seqtype=="sag-T2":
+                        series_id = description[(description["study_id"] ==study_id) & (description["series_description"]=="Sagittal T2/STIR")]["series_id"].values[0]  
+                    elif seqtype.endswith("ax-T2"):
+                        series_id = description[(description["study_id"] ==study_id) & (description["series_description"]=="Axial T2")]["series_id"].values[0]                      
                                            
                     X, Y = [], []
                     Z = []
-                    if contrast=="t2":
+                    if seqtype=="sag-T2":
                         for _, _, instance_number, _, _, x, y in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Spinal Canal Stenosis")].values:
                             X.append(x)
                             Y.append(y)
                             Z.append(instance_number)
                                                 
-                    elif contrast=="t1":
+                    elif seqtype=="left-sag-T1":
                         for _, _, instance_number, _, _, x, y in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Left Neural Foraminal Narrowing")].values:
                             X.append(x)
                             Y.append(y)
                             Z.append(instance_number)
+                            
+                            
+                    elif seqtype=="right-sag-T1":
+                        for _, _, instance_number, _, _, x, y in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Right Neural Foraminal Narrowing")].values:
+                            X.append(x)
+                            Y.append(y)
+                            Z.append(instance_number)
+                            
+                    elif seqtype=="left-ax-T2":
+                        for _, _, instance_number, _, _, x, y in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Left Subarticular Stenosis")].values:
+                            X.append(x)
+                            Y.append(y)
+                            Z.append(instance_number)
+                    
+                    elif seqtype=="right-ax-T2":
+                        for _, _, instance_number, _, _, x, y in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Right Subarticular Stenosis")].values:
+                            X.append(x)
+                            Y.append(y)
+                            Z.append(instance_number)
+
                             
                     label = labels[labels["study_id"]==study_id].values[0, 1:].astype(int)
                     if label.min() < 0 or label.max() > 2 :
                         print(study_id)
                         print(label)
                     
-                    if len(X)==5:
+                    if len(X)==5 or len(X)==10:
                         path = root_dir + str(study_id) + "/" + str(series_id)
                         self.study_ids.append(study_id)
                         self.images_paths.append(path) 
@@ -175,49 +198,30 @@ class RSNAPatchDataset(Dataset):
     
     def __getitem__(self, idx):
         label = torch.Tensor(self.labels[idx]).to(torch.long)
-        study_id = self.study_ids[idx]
-        
-        patches = {"L1/L2": 0, "L2/L3": 0, "L3/L4": 0, "L4/L5": 0, "L5/S1": 0}
-        levels = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
-        
+        study_id = self.study_ids[idx]        
         X, Y = self.coordinates[idx]
         Z = self.instance_numbers[idx]
         path = self.images_paths[idx]
         n = len(os.listdir(path))
-        middle_slice = dicom.read_file(path + "/" + str(n // 2) + ".dcm")
         
         tmps = sorted(list(zip(X, Y)), key=lambda x : x[1])
         points = []
         for p in tmps:
             points.append(np.array(p))
-            
+        
         bbox = get_bounding_box1(points)
         
-        for P in bbox:
-            P = list(P)
-            P.append(P[0])
-            P = np.array(P)
-                
-        for i in range(5):
-            
-            theta = get_angle(bbox[i])
-            s = get_sign(bbox[i])    
-            img = dicom.read_file(path + "/" + str(n//2) + ".dcm")  
-            rotated_img, M = rotate_image(img.pixel_array, s*theta)      
-            rotated_landmarks = rotate_landmarks(bbox[i], M)
-            rotated_landmarks = list(rotated_landmarks)
-            rotated_landmarks.append(rotated_landmarks[0])
-            rotated_landmarks = np.array(rotated_landmarks).astype(int)      
-            
-            i1 = np.min(rotated_landmarks[:,1])
-            i2 = np.max(rotated_landmarks[:,1])
-            j1 = np.min(rotated_landmarks[:,0])
-            j2 = np.max(rotated_landmarks[:,0])
+        C = 5
+        patches = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
-            patch = np.zeros((n, i2-i1, j2-j1))
-            for j in range(n):
-                img = dicom.read_file(path + "/" + str(j+1) + ".dcm")
-                w, h = img.pixel_array.shape
+        if self.seqtype=="sag-T2" or self.seqtype.endswith("sag-T1"):
+            bbox = get_bounding_box1(points)
+            for i in range(C):    
+                theta = get_angle(bbox[i])
+                s = get_sign(bbox[i])    
+
+                img = dicom.read_file(path + "/" + str(Z[i]) + ".dcm")
+                # img = dicom.read_file(path + "/" + str(n//2) + ".dcm")
                 rotated_img, M = rotate_image(img.pixel_array, s*theta)
                 rotated_landmarks = rotate_landmarks(bbox[i], M)
                 rotated_landmarks = list(rotated_landmarks)
@@ -227,17 +231,95 @@ class RSNAPatchDataset(Dataset):
                 i2 = np.max(rotated_landmarks[:,1])
                 j1 = np.min(rotated_landmarks[:,0])
                 j2 = np.max(rotated_landmarks[:,0])
-                 
-            try :
-                patch[j] = rotated_img[i1:i2,j1:j2]
-                patches[levels[i]] = torch.Tensor(patch[None]).to(torch.float)
-            except :
-                print(study_id)
-                print("value error")
+                
+                patch = np.zeros((3, i2-i1, j2-j1))
+                for k in range(-1, 2):
+                    img = dicom.read_file(path + "/" + str(Z[i]+k) + ".dcm")
+                    # img = dicom.read_file(path + "/" + str(n//2) + ".dcm")
+                    rotated_img, M = rotate_image(img.pixel_array, s*theta)
+                    rotated_landmarks = rotate_landmarks(bbox[i], M)
+                    rotated_landmarks = list(rotated_landmarks)
+                    rotated_landmarks.append(rotated_landmarks[0])
+                    rotated_landmarks = np.array(rotated_landmarks).astype(int)      
+                    try:
+                        patch[k+1] = rotated_img[i1:i2,j1:j2]
+                    except:
+                        print(study_id)
+                try :
+                    # patches[i+1] = torch.Tensor(rotated_img[i1:i2,j1:j2][None]).to(torch.float)
+                    patches[i+1] = torch.Tensor(patch[None]).to(torch.float)
+                except :
+                    print(study_id)
+                    print("value error")
+        
+        # elif self.seqtype==("left-sag-T1") :
+        #     img = dicom.read_file(path + "/" + str(n//2) + ".dcm")
+        #     bbox = get_bounding_box2(img.pixel_array, points).astype(int)
+
+        #     for i in range(C):    
+        #         # img = dicom.read_file(path + "/" + str(Z[i]) + ".dcm").pixel_array
+        #         # i1 = np.min(bbox[i,:,1])
+        #         # i2 = np.max(bbox[i,:,1])
+        #         # j1 = np.min(bbox[i,:,0])
+        #         # j2 = np.max(bbox[i,:,0])
+                    
+        #         # try :
+        #         #     patches[i+1] = torch.Tensor(img[i1:i2,j1:j2][None]).to(torch.float)
+        #         # except :
+        #         #     print(study_id)
+        #         #     print("value error")
+                
+        #         theta = get_angle(bbox[i])
+        #         s = get_sign(bbox[i])    
+
+        #         img = dicom.read_file(path + "/" + str(Z[i]) + ".dcm")
+        #         rotated_img, M = rotate_image(img.pixel_array, s*theta)
+        #         rotated_landmarks = rotate_landmarks(bbox[i], M)
+        #         rotated_landmarks = list(rotated_landmarks)
+        #         rotated_landmarks.append(rotated_landmarks[0])
+        #         rotated_landmarks = np.array(rotated_landmarks).astype(int)      
+                
+        #         h, w = rotated_img.shape
+
+        #         i1 = np.min(rotated_landmarks[:,1])
+        #         i2 = np.max(rotated_landmarks[:,1])
+        #         j1 = np.min(rotated_landmarks[:,0])
+        #         j2 = np.max(rotated_landmarks[:,0])
+                    
+        #         try :
+        #             patches[i+1] = torch.Tensor(rotated_img[i1:min(i2, h-1),j1:min(j2, w-1)][None]).to(torch.float)
+        #         except :
+        #             print(study_id)
+        #             print("value error")
+                    
+        # elif self.seqtype == "right-sag-T1" :
+        #     img = dicom.read_file(path + "/" + str(n//2) + ".dcm")
+        #     bbox = get_bounding_box3(img.pixel_array, points).astype(int)
+
+        #     for i in range(C):    
+        #         img = dicom.read_file(path + "/" + str(Z[i]) + ".dcm").pixel_array
+        #         i1 = np.min(bbox[i,:,1])
+        #         i2 = np.max(bbox[i,:,1])
+        #         j1 = np.min(bbox[i,:,0])
+        #         j2 = np.max(bbox[i,:,0])
+                    
+        #         try :
+        #             patches[i+1] = torch.Tensor(img[i1:i2,j1:j2][None]).to(torch.float)
+        #         except :
+        #             print(study_id)
+        #             print("value error")
+                    
+        elif self.seqtype.endswith("ax-T2") :
+            img = dicom.read_file(path + "/" + str(n//2) + ".dcm")
+            bbox = get_bounding_box3(img.pixel_array, points, a=0.6, b=0.6).astype(int)
+
+            for i in range(C):    
+                img = dicom.read_file(path + "/" + str(Z[i]) + ".dcm")                
+                patches[i+1] = torch.Tensor(img.pixel_array[None]).to(torch.float)   
             
         if self.transform is not None:
             patches = self.transform(patches)
-        
+         
         return patches, label, study_id
 
 class CustomDataset(Dataset):
@@ -494,7 +576,7 @@ if __name__=="__main__":
     cond_lev = ["study_id"]
 
     CONDITIONS = seq2cond[seqtype]
-
+ 
     for level in LEVELS:
         for cond in CONDITIONS:
             cond_lev.append(cond + "_" + level)
@@ -523,19 +605,21 @@ if __name__=="__main__":
             NormalizeIntensityd(keys=["image"], nonzero=False, channel_wise=False),
         ]
     )
-    
+    description = pd.read_csv("./data/train_series_descriptions.csv")
     condition = seq2cond[seqtype][0].replace("_", " ").title()
     print(condition)
     data = RSNAPatchDataset(
         root_dir=folder,
         study_ids=test_id,
-        seqtype=seqtype,
-        cond = condition,
+        contrast="t2",
+        description = description,
         coordinates=coordinates,
         label_df=id_label,
         exclude=exclude,
         transform=None,
+        
     )
+    
     
     print("Lenght of dataset", len(data))
     
