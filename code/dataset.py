@@ -23,6 +23,74 @@ from monai.transforms import (
 )
 from sklearn.model_selection import train_test_split
 
+class SpinalCanalStenosisDataset(Dataset):
+    def __init__(self, 
+                 root_dir : str = None,
+                 labels_csv : str = "data/train.csv"):
+        vol_paths = glob.glob(root_dir + "/data/sub*T2w.nii.gz")
+        seg_paths = glob.glob(path+"/output/step2_output/*T2w.nii.gz")
+        text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
+        vol_paths.sort()
+        seg_paths.sort()
+        self.vol_paths = vol_paths
+        self.seg_paths = seg_paths
+        
+        self.labels = pd.read_csv(labels_csv)
+        self.labels = self.labels[["study_id",
+                                   "spinal_canal_stenosis_l1_l2",
+                                   "spinal_canal_stenosis_l2_l3",
+                                   "spinal_canal_stenosis_l3_l4",
+                                   "spinal_canal_stenosis_l4_l5",
+                                   "spinal_canal_stenosis_l5_s1"]]
+        self.labels = self.labels.replace(text2int)
+        
+        
+    def __getitem__(self, idx):
+        
+        vol_path = self.vol_paths[idx]
+        
+        x = x+"_0000.nii.gz"
+        vol = nib.load(path+"/output/input/"+x).get_fdata()
+        x = vol_path.split("/")[-1]
+        study_id = x.split("_")[0][4:]
+        
+        seg_path = self.seg_paths[idx]
+        label = self.labels[self.labels["study_id"]==int(study_id)].values[0,1:].astype(int)
+        
+        vol = nib.load(vol_path).get_fdata()    
+        seg = nib.load(seg_path).get_fdata()
+        
+        D, H, W = vol.shape
+        print(D, H, W)
+        print(seg.shape)
+        discs = np.isin(seg, [202, 203, 204, 205, 206]).astype(int)
+        disc_l5 = np.isin(seg, [202]).astype(int)
+        disc_l4 = np.isin(seg, [203]).astype(int)
+        disc_l3 = np.isin(seg, [204]).astype(int)
+        disc_l2 = np.isin(seg, [205]).astype(int)
+        disc_l1 = np.isin(seg, [206]).astype(int)
+
+        discs = [disc_l1, disc_l2, disc_l3, disc_l4, disc_l5]
+        levels = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
+        patches = {}
+        
+        w = 20
+        for i, disc in enumerate(discs):
+            mask = torch.Tensor(disc)
+            nonzero_indices = torch.nonzero(mask)
+            d_min, h_min, w_min = nonzero_indices.min(0)[0]  # Minimum indices
+            d_max, h_max, w_max = nonzero_indices.max(0)[0]  # Maximum indices
+            
+            patch = vol[max(0, d_min):min(D-1, d_max + 1), 
+                        max(0, h_min-w):min(H-1, h_max+w), 
+                        max(0, w_min-w):min(W-1, w_max+w)]
+            print(w_min-w, w_max+w)
+            print(max(0, w_min-w), min(W, w_max+w))
+            patches[levels[i]] = patch
+                
+        
+        return patches, label       
+
 class RSNADataset(Dataset):
     """
     Build a torch dataset, given a data folder containing volumes, a contrast and a dataframe of labels.
