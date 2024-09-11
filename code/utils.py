@@ -5,6 +5,34 @@ import numpy as np
 import cv2
 import torch
 
+def patch_extraction(vol, mask, d=0, h=20, w=20):
+    """
+    Extract a ROI from a volume with a given segmentation mask.
+
+    vol : array of shape (D, H, W)
+    mask : segmentation mask of shape (D, H, W)
+    d, h, w : margin for each image axis
+    """
+    
+    D, H, W = vol.shape
+    mask = torch.Tensor(mask)
+    nonzero_indices = torch.nonzero(mask)  # Extracting non-zero indices from the first channel
+
+    try:
+        d_min, h_min, w_min = nonzero_indices.min(0)[0]  # Minimum indices
+        d_max, h_max, w_max = nonzero_indices.max(0)[0]  # Maximum indices
+        w = 20
+        
+        patch = vol[max(0, d_min-d):min(D, d_max + d), 
+                    max(0, h_min - h):min(H, h_max + h), 
+                    max(0, w_min - w):min(W, w_max + w)]
+        return patch
+   
+    except IndexError:
+        print("")
+
+    
+
 def get_bounding_box1(points, a=1.1, b = 0.6):
     """Boxes with sides following spine curve"""
     n = len(points)
@@ -47,7 +75,8 @@ def get_bounding_box1(points, a=1.1, b = 0.6):
             
     return bbox #.astype(int)
 
-def get_bounding_box2(img, points):
+def get_bounding_box2(img, points, a=0.5):
+    """Boxes with sides parallel to image axes"""
     h, w = img.shape
     n = len(points)
     bbox = np.zeros((n, 4, 2))
@@ -58,10 +87,10 @@ def get_bounding_box2(img, points):
             dist = np.abs(points[i][1] - points[i+1][1]) 
             u = dist / 2 * np.array([0, 1])
             
-            bbox[i, 0] = points[i] + u + v
-            bbox[i, 1] = points[i] + u - v
-            bbox[i, 2] = points[i] - u - v
-            bbox[i, 3] = points[i] - u + v
+            bbox[i, 0] = points[i] + u + a*v
+            bbox[i, 1] = points[i] + u - a*v
+            bbox[i, 2] = points[i] - u - a*v
+            bbox[i, 3] = points[i] - u + a*v
         
         elif i<n-1:
             
@@ -69,23 +98,38 @@ def get_bounding_box2(img, points):
             dist2 = np.abs(points[i][1] - points[i-1][1]) 
             u = min(dist1, dist2) / 2 * np.array([0, 1])
             
-            bbox[i, 0] = points[i] + u + v
-            bbox[i, 1] = points[i] + u - v
-            bbox[i, 2] = points[i] - u - v
-            bbox[i, 3] = points[i] - u + v
+            bbox[i, 0] = points[i] + u + a*v
+            bbox[i, 1] = points[i] + u - a*v
+            bbox[i, 2] = points[i] - u - a*v
+            bbox[i, 3] = points[i] - u + a*v
         
 
         if i==n-1:
             dist = np.abs(points[i-1][1] - points[i][1]) 
             u = dist / 2 * np.array([0, 1])
             
-            bbox[i, 0] = points[i] + u + v
-            bbox[i, 1] = points[i] + u - v
-            bbox[i, 2] = points[i] - u - v
-            bbox[i, 3] = points[i] - u + v
-        
+            bbox[i, 0] = points[i] + u + a*v
+            bbox[i, 1] = points[i] + u - a*v
+            bbox[i, 2] = points[i] - u - a*v
+            bbox[i, 3] = points[i] - u + a*v
             
     return bbox
+
+def get_bounding_box3(img, points, a=0.5, b=0.5):
+    """Boxes with sides parallel to image axes"""
+    h, w = img.shape
+    n = len(points)
+    bbox = np.zeros((n, 4, 2))
+    
+    v = w/4 * np.array([1, 0])
+    for i in range(n):
+        u = w / 4 * np.array([0, 1])
+        
+        bbox[i, 0] = points[i] + a*u + b*v
+        bbox[i, 1] = points[i] + a*u - b*v
+        bbox[i, 2] = points[i] - a*u - b*v
+        bbox[i, 3] = points[i] - a*u + b*v       
+    return bbox #.astype(int)
 
 def get_sign(points):
     u = np.array([0, 1])
@@ -143,7 +187,7 @@ if __name__=="__main__":
         condition, 
         level, 
         x, 
-        y) in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Spinal Canal Stenosis")].values:
+        y) in coordinates[(coordinates["study_id"]==study_id)&(coordinates["condition"]=="Left Neural Foraminal Narrowing")].values:
         X.append(x)
         Y.append(y)
         
@@ -181,7 +225,7 @@ if __name__=="__main__":
     ax[0].set_title("Boxes with sides following spine curve")
     ax[1].set_title("Boxes with sides parallel to image axes")
 
-    print(f"subject {study_id} Sagittal T2")
+    print(f"subject {study_id} Sagittal T1")
 
     plt.savefig("bbox.png")
     plt.show()
