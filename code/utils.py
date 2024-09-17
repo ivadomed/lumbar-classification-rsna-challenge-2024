@@ -31,6 +31,31 @@ def patch_extraction(vol, mask, d=0, h=20, w=20):
     except IndexError:
         print("")
 
+def patch_extraction2(vol, mask, d=10, h=20, w=20):
+    """
+    Extract a ROI from a volume with a given segmentation mask.
+
+    vol : array of shape (D, H, W)
+    mask : segmentation mask of shape (D, H, W)
+    d, h, w : margin for each image axis
+    """
+    
+    D, H, W = vol.shape
+    mask = torch.Tensor(mask)
+    nonzero_indices = torch.nonzero(mask)  # Extracting non-zero indices from the first channel
+
+    d_min, h_min, w_min = nonzero_indices.min(0)[0]  # Minimum indices
+    d_max, h_max, w_max = nonzero_indices.max(0)[0]  # Maximum indices
+    
+    patch1 = vol[max(0, d_min+d//2):min(D, d_min + d), 
+                max(0, h_min - h):min(H, h_max + h), 
+                max(0, w_min - w):min(W, w_max + w)]
+    
+    patch2 = vol[max(0, d_max-d):min(D, d_max-d//2), 
+                max(0, h_min - h):min(H, h_max + h), 
+                max(0, w_min - w):min(W, w_max + w)]
+
+    return patch1, patch2
     
 
 def get_bounding_box1(points, a=1.1, b = 0.6):
