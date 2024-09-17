@@ -356,8 +356,8 @@ def main():
     vol_paths.sort()
     seg_paths.sort()
 
-    train_vols, val_vols, train_seg, val_seg = train_test_split(vol_paths, seg_paths, test_size=0.7, random_state=42)
-    val_vols, test_vols, val_seg, test_seg = train_test_split(val_vols, val_seg, test_size=0.7, random_state=42)
+    train_vols, val_vols, train_seg, val_seg = train_test_split(vol_paths, seg_paths, test_size=0.5, random_state=42)
+    val_vols, test_vols, val_seg, test_seg = train_test_split(val_vols, val_seg, test_size=0.5, random_state=42)
 
     train_df = pd.read_csv("./data/train.csv")
     train_df = train_df.dropna()
@@ -389,8 +389,8 @@ def main():
                                 "right_neural_foraminal_narrowing_l5_s1"]].sum(axis=1))
 
     df.rename(columns={0: "count"}, inplace=True)
-    idx = np.where(df.values[:, 0]<=4)
-    exclude = np.random.choice(idx[0], size=250, replace=False)
+    idx = np.where(df.values[:, 0]<=5)
+    exclude = np.random.choice(idx[0], size=300, replace=False)
     exclude = list(train_df.iloc[exclude]["study_id"].values)
 
 
