@@ -9,11 +9,10 @@ Author : Simon Queric
 
 """
 
-import sys
 import yaml
 import numpy as np
-import nibabel as nib
 import pandas as pd
+from scipy.special import softmax
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -32,7 +31,6 @@ from sklearn.metrics import (
     classification_report,
     f1_score
 )
-
 
 from monai.data import DataLoader
 from utils import *
@@ -83,12 +81,9 @@ def train(
     train_loader,
     train_data,
     val_loader,
-    val_data,
     device,
     writer_train,
-    autocast,
     scaler,
-    experiment,
     seqtype,
     val_interval
 ):
@@ -127,7 +122,7 @@ def train(
                 # plt.imshow(img[0,10])
                 # plt.savefig("images/patch_level_{i}.png")
                 
-                # outputs, _ = model(patches[i+1].to(device)) 
+                    # outputs, _ = model(patches[levels[i]].to(device)) 
                     outputs = model(patches[levels[i]].to(device)) 
 
                     loss += criterion(outputs, label[:, i].to(device))                
@@ -168,7 +163,7 @@ def train(
                     patches, label, study_id = batch_data
                     loss=0
                     for i in range(C):    
-                        # outputs, _ = model(patches[i+1].to(device))
+                        # outputs, _ = model(patches[levels[i]].to(device))
                         outputs = model(patches[levels[i]].to(device)) 
                         loss += criterion(outputs[:], label[:, i].to(device))                
                     epoch_len = len(train_data) // train_loader.batch_size
@@ -183,7 +178,7 @@ def train(
                 best_metric = metric_eval
                 best_metric_epoch = epoch + 1
                 torch.save(
-                    model.state_dict(), f"checkpoints/grading_network_experiment_{experiment}_{seqtype}.pth"
+                    model.state_dict(), f"checkpoints/grading_network_experiment_{seqtype}.pth"
                 )
                 print("saved new best metric model")
 
@@ -191,7 +186,7 @@ def train(
             print(f"Best accuracy: {best_metric:.4f} at epoch {best_metric_epoch}")
     
     torch.save(
-            model.state_dict(), f"checkpoints/grading_network_experiment_{experiment}_last_epoch.pth"
+            model.state_dict(), f"checkpoints/grading_network_experiment_last_epoch.pth"
                 )
 
     # print(
@@ -201,31 +196,31 @@ def train(
 
     return exceptions, epoch_loss_values, metric_values
 
-def test(model, test_loader, test_data, criterion, device, seqtype):
-    LEVELS = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
+def test(model, test_loader, test_data, criterion, device):
+    
+    levels = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
     model.eval()
     num_correct = 0
     metric_count = 0
     total_loss = 0
-    y_true = []
-    y_pred = []
+    y_true = {"L1/L2": [], "L2/L3": [], "L3/L4": [], "L4/L5": [], "L5/S1": []}
+    y_pred = {"L1/L2": [], "L2/L3": [], "L3/L4": [], "L4/L5": [], "L5/S1": []}
 
     C=5
 
     for batch_data in tqdm(test_loader):
-        
         patches, label, _ = batch_data
             
         with torch.no_grad():
             loss = 0
             for i in range(C):    
-                # outputs, _ = model(patches[i+1].to(device)) 
-                outputs = model(patches[i+1].to(device))
+                # outputs, _ = model(patches[levels[i]].to(device))
+                outputs = model(patches[levels[i]].to(device))
                 loss += criterion(outputs[:], label[:, i].to(device))                
 
                 # print(list(outputs.argmax(dim=-1).cpu().numpy()))
-                y_pred += list(outputs.cpu().numpy())
-                y_true += list(label[:,i].cpu().numpy())
+                y_pred[levels[i]] += list(outputs.cpu().numpy())
+                y_true[levels[i]] += list(label[:,i].cpu().numpy())
                 value = torch.eq(outputs.argmax(dim=-1).cpu(), label[:, i])
                 metric_count += len(value)
                 num_correct += value.sum().item()
@@ -238,7 +233,6 @@ def test(model, test_loader, test_data, criterion, device, seqtype):
     total_loss /= epoch_len
 
     return metric, y_true, y_pred, total_loss
-
 
 def main():
     parser = get_parser()
@@ -302,12 +296,8 @@ def main():
     id_label = id_label.replace(text2int)
     study_ids = id_label.values[:, 0].astype(int)  # store id of each subject
 
-    print(study_ids)
+    # print(study_ids)
 
-    # Train - Validation - Test split
-    # 0.5 - 0.25 - 0.25
-    train_id, val_id = train_test_split(study_ids, test_size=0.85, random_state=42)
-    val_id, test_id = train_test_split(val_id, test_size=0.85, random_state=42)
 
     # subjects to exclude
 
@@ -337,25 +327,73 @@ def main():
         for pth in vol_paths:
             if x in pth:
                 vol_paths.remove(pth)
-                print(x)
+                # print(x)
         for pth in seg_paths:
             if x in pth:
                 seg_paths.remove(pth) 
-                print(x)
+                # print(x)
 
     vol_paths.sort()
     seg_paths.sort()
 
+    train_df = pd.read_csv("./data/train.csv")
+    train_df = train_df.dropna()
+    text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe":2}
+    train_df = train_df.replace(text2int)
+
+
+    train_df = train_df[["study_id",
+                        "left_neural_foraminal_narrowing_l1_l2",
+                        "left_neural_foraminal_narrowing_l2_l3",
+                        "left_neural_foraminal_narrowing_l3_l4",
+                        "left_neural_foraminal_narrowing_l4_l5",
+                        "left_neural_foraminal_narrowing_l5_s1",
+                        "right_neural_foraminal_narrowing_l1_l2",
+                        "right_neural_foraminal_narrowing_l2_l3",
+                        "right_neural_foraminal_narrowing_l3_l4",
+                        "right_neural_foraminal_narrowing_l4_l5",
+                        "right_neural_foraminal_narrowing_l5_s1"]]
+
+    df = pd.DataFrame(train_df[["left_neural_foraminal_narrowing_l1_l2",
+                                "left_neural_foraminal_narrowing_l2_l3",
+                                "left_neural_foraminal_narrowing_l3_l4",
+                                "left_neural_foraminal_narrowing_l4_l5",
+                                "left_neural_foraminal_narrowing_l5_s1",
+                                "right_neural_foraminal_narrowing_l1_l2",
+                                "right_neural_foraminal_narrowing_l2_l3",
+                                "right_neural_foraminal_narrowing_l3_l4",
+                                "right_neural_foraminal_narrowing_l4_l5",
+                                "right_neural_foraminal_narrowing_l5_s1"]].sum(axis=1))
+
+    df.rename(columns={0: "count"}, inplace=True)
+    idx = np.where(df.values[:, 0]<=5)
+    exclude = np.random.choice(idx[0], size=700, replace=False)
+    exclude = list(train_df.iloc[exclude]["study_id"].values)
+
     train_vols, val_vols, train_seg, val_seg = train_test_split(vol_paths, seg_paths, test_size=0.5, random_state=42)
     val_vols, test_vols, val_seg, test_seg = train_test_split(val_vols, val_seg, test_size=0.5, random_state=42)
 
-    train_data = SpinalCanalStenosisDataset(root_dir=root_dir, vol_paths=train_vols, seg_paths=train_seg, transform=transform)
-    val_data = SpinalCanalStenosisDataset(root_dir=root_dir, vol_paths=val_vols, seg_paths=val_seg, transform=transform)
-    test_data = SpinalCanalStenosisDataset(root_dir=root_dir, vol_paths=test_vols, seg_paths=test_seg, transform=transform)
+    train_data = SpinalCanalStenosisDataset(root_dir=root_dir, 
+                                            vol_paths=train_vols, 
+                                            seg_paths=train_seg, 
+                                            transform=transform,
+                                            exclude = exclude)
+    
+    val_data = SpinalCanalStenosisDataset(root_dir=root_dir, 
+                                          vol_paths=val_vols, 
+                                          seg_paths=val_seg, 
+                                          transform=transform,
+                                          exclude = exclude)
+    
+    test_data = SpinalCanalStenosisDataset(root_dir=root_dir, 
+                                           vol_paths=test_vols, 
+                                           seg_paths=test_seg, 
+                                           transform=transform,
+                                           exclude = None)
     
     print("Train dataset length :", len(train_data))
     print("Val dataset length :", len(val_data))
-    print("Val dataset length :", len(val_data))
+    print("Test dataset length :", len(test_data))
 
     train_loader = DataLoader(dataset=train_data, batch_size=4, shuffle=True)
     val_loader = DataLoader(dataset=val_data, batch_size=4, shuffle=True)
@@ -372,21 +410,21 @@ def main():
 
 
     # ResNet17
-    # model = ResNet(
-    #                 block="basic",
-    #                 layers=[2, 2, 2, 2],
-    #                 block_inplanes=[64, 128, 256, 512],
-    #                 spatial_dims=2,
-    #                 n_input_channels=1,
-    #                 num_classes=3,
-    #             ).to(device)
+    model = ResNet(
+                    block="basic",
+                    layers=[2, 2, 2, 2],
+                    block_inplanes=[64, 128, 256, 512],
+                    spatial_dims=3,
+                    n_input_channels=1,
+                    num_classes=3,
+                ).to(device)
     
     # ViT
     
     # model = ViT(in_channels=1, 
-    #             img_size=(64,128), 
-    #             patch_size=(64,64),
-    #             spatial_dims=2,
+    #             img_size=(4, 64, 64), 
+    #             patch_size=(2, 32, 32),
+    #             spatial_dims=3,
     #             pos_embed='conv', 
     #             post_activation = None,
     #             classification=True,
@@ -395,14 +433,14 @@ def main():
     
     # ResNet34
     
-    model = ResNet(
-                    block="basic",
-                    layers=[3, 4, 6, 3],
-                    block_inplanes=[64, 128, 256, 512],
-                    spatial_dims=3,
-                    n_input_channels=1,
-                    num_classes=3,
-                ).to(device)
+    # model = ResNet(
+    #                 block="basic",
+    #                 layers=[3, 4, 6, 3],
+    #                 block_inplanes=[64, 128, 256, 512],
+    #                 spatial_dims=3,
+    #                 n_input_channels=1,
+    #                 num_classes=3,
+    #             ).to(device)
 
     # Models, optimization method, loss criterion
     
@@ -426,14 +464,11 @@ def main():
             train_loader,
             train_data,
             val_loader,
-            val_data,
             device,
             writer_train,
-            autocast,
             scaler,
-            experiment,
             seqtype,
-            val_interval=val_interval
+            val_interval
         )
         
         plt.figure()
@@ -464,82 +499,134 @@ def main():
     # exceptions = np.array(exceptions)
     # np.save("exceptions.npy", exceptions)
 
-    model = ResNet(
-            block="basic",
-            layers=[3, 4, 6, 3],
-            block_inplanes=[64, 128, 256, 512],
-            spatial_dims=3,
-            n_input_channels=1,
-            num_classes=3,
-    ).to(device)
+    # model = ResNet(
+    #         block="basic",
+    #         layers=[3, 4, 6, 3],
+    #         block_inplanes=[64, 128, 256, 512],
+    #         spatial_dims=3,
+    #         n_input_channels=1,
+    #         num_classes=3,
+    # ).to(device)
     
     # model = ViT(in_channels=1, 
-    #             img_size=(64,128), 
-    #             patch_size=(64,64),
-    #             spatial_dims=2,
-    #             pos_embed='conv', 
-    #             post_activation = None,
-    #             classification=True,
-    #             num_classes=3
-    #             ).to(device)
-    
-    # model = ResNet(
-    #             block="basic",
-    #             layers=[2, 2, 2, 2],
-    #             block_inplanes=[64, 128, 256, 512],
-    #             spatial_dims=2,
-    #             n_input_channels=1,
-    #             num_classes=3,
-    #         ).to(device)
+    #                 img_size=(4, 64, 64), 
+    #                 patch_size=(2, 32, 32),
+    #                 spatial_dims=2,
+    #                 pos_embed='conv', 
+    #                 post_activation = None,
+    #                 classification=True,
+    #                 num_classes=3
+    #                 ).to(device)
+    model = ResNet(
+                block="basic",
+                layers=[2, 2, 2, 2],
+                block_inplanes=[64, 128, 256, 512],
+                spatial_dims=3,
+                n_input_channels=1,
+                num_classes=3,
+            ).to(device)
 
     
     
-    print(f"checkpoints/grading_network_experiment_{experiment}_{seqtype}.pth")
-    model.load_state_dict(torch.load(f"checkpoints/grading_network_experiment_{experiment}_{seqtype}.pth"))
+    print(f"checkpoints/grading_network_experiment_{seqtype}.pth")
+    model.load_state_dict(torch.load(f"checkpoints/grading_network_experiment_{seqtype}.pth"))
     model.eval()
     
+    levels = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
+
     metric, y_true, y_pred, total_loss = test(model=model, 
-                                  test_loader=test_loader, 
-                                  test_data = test_data, 
-                                  criterion = criterion,
-                                  device = device,
-                                  seqtype = seqtype)
+                                              test_loader=test_loader, 
+                                              test_data = test_data, 
+                                              criterion = criterion,
+                                              device = device)
 
     print("Total loss : {:.2f}".format(total_loss))
 
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
+    y_true_global = []
+    y_pred_global = []
+    y_pred_continuous = []
 
-    # n, k = y_pred.shape    
-    
-    np.save("y_true.npy", y_true)
-    np.save("y_pred.npy", y_pred)
+    for lvl in levels:
+        level = lvl.replace("/", "_")
+        y_true_lvl = np.array(y_true[lvl])
+        y_pred_lvl = np.array(y_pred[lvl])
+        y_pred_lvl = softmax(y_pred_lvl, axis=-1)
 
-    y_test = y_true #.reshape(n*k)
-    y_pred = y_pred #.reshape(n*k)
+        # n, k = y_pred.shape    
+        
+        np.save("y_true.npy", y_true)
+        np.save("y_pred.npy", y_pred)
 
-    print(y_pred.shape)
-    print(y_true.shape)
-    pred = y_pred.argmax(axis=-1)    
+        y_test = y_true_lvl #.reshape(n*k)
+
+        # print(y_pred.shape)
+        # print(y_true.shape)
+        print(y_pred_lvl)
+        
+        #pred = y_pred_lvl.argmax(axis=-1)    
+        pred = 0*y_pred_lvl[:,0] + 1*y_pred_lvl[:,1] + 2*y_pred_lvl[:,2]
+        
+        print(pred)    
+        
+        y_pred_continuous += list(pred)
+        
+        new_pred = np.zeros_like(pred)
+        
+        new_pred[pred<=0.8] = 0
+        new_pred[(pred>0.8) & (pred<=1.2)] = 1
+        new_pred[pred>1.2] = 2
+        
+        new_pred = new_pred.astype(int)
+        
+        print(y_test)
+        
+        y_true_global+=list(y_test)
+        y_pred_global+=list(new_pred)
+        
+        
+        print(f"LEVEL {lvl}")
+        print("Raw accuracy score on test set :", metric)
+        print("Balanced accuracy score on test set : {:.2f}".format(balanced_accuracy_score(y_true=y_test, y_pred=new_pred)))
+        print("F1 score on test set : {:.2f}".format(f1_score(y_true=y_test, y_pred=new_pred, average="macro")))
+
+        labels = [0, 1, 2]
+        cm = confusion_matrix(y_test, new_pred, labels=labels)
+        print(type(cm))
+        print(f"confusion matrix :")
+        print(np.array(cm))
+        row_sums = cm.sum(axis=1, keepdims=True)
+        cm = cm / row_sums
+        
+        # row_sums = cm.sum(axis=1, keepdims=True)
+        # cm = cm / row_sums
+
+        # plt.imshow(cm, cmap="bwr")
+        # plt.colorbar()
+        # plt.savefig(f"normalized_confusion_matrix_{seqtype}_{level}.png")
+        # plt.show()
+        
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
+
+        disp.plot()
+        
+        plt.imshow(cm)
+        plt.savefig(f"confusion_matrix_{seqtype}_{level}.png")
+        plt.show()
+        
     
     print("Raw accuracy score on test set :", metric)
-    print("Balanced accuracy score on test set : {:.2f}".format(balanced_accuracy_score(y_true=y_test, y_pred=pred)))
-    print("F1 score on test set : {:.2f}".format(f1_score(y_true=y_test, y_pred=pred, average="macro")))
-    
+    print("Balanced accuracy score on test set : {:.2f}".format(balanced_accuracy_score(y_true=y_true_global, y_pred=y_pred_global)))
+    print("F1 score on test set : {:.2f}".format(f1_score(y_true=y_true_global, y_pred=y_pred_global, average="macro")))
 
     labels = [0, 1, 2]
-    cm = confusion_matrix(y_test, pred, labels=labels)
+    cm = confusion_matrix(y_true_global, y_pred_global, labels=labels)
     print(type(cm))
-    print("confusion matrix :", np.array(cm))
+    print(f"confusion matrix :")
+    print(np.array(cm))
     
     row_sums = cm.sum(axis=1, keepdims=True)
     cm = cm / row_sums
-    
 
-    plt.imshow(cm, cmap="bwr")
-    plt.colorbar()
-    plt.savefig(f"normalized_confusion_matrix_{seqtype}.png")
-    plt.show()
     
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
 
@@ -548,18 +635,14 @@ def main():
     plt.imshow(cm)
     plt.savefig(f"confusion_matrix_{seqtype}.png")
     plt.show()
-    
-    
-    
-    # fpr, tpr, thresholds = roc_curve(y_true, 1-y_pred)
-    # roc_auc = auc(fpr, tpr)
-    # display = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=roc_auc,
-    #                                 estimator_name='CNN')
 
-    # display.plot()
-    # plt.savefig("roc.png")
-    # plt.show()
+    fig = plt.figure()
+    plt.hist(y_pred_continuous, bins="auto", edgecolor="k")
+    plt.savefig("Histogram_of_empirical_mean_output.png")
+    plt.show()
 
+    ## TODO : plot histogram for wrong prediction
+    
 
 if __name__ == "__main__":
     main()
