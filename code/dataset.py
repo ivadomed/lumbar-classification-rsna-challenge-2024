@@ -2,28 +2,10 @@ import pandas as pd
 from tqdm import tqdm
 from image import Image
 import glob
-import os
-import yaml
 import numpy as np
-import nibabel as nib
-import matplotlib.pyplot as plt
-import pydicom as dicom
 import torch
 from utils import *
-from monai.data import Dataset, DataLoader
-from monai.transforms import (
-    LoadImage, 
-    LoadImaged,
-    Spacingd,
-    Orientation,
-    Orientationd,
-    EnsureChannelFirstd,
-    EnsureChannelFirst,
-    Compose,
-    Resized,
-    NormalizeIntensityd
-)
-from sklearn.model_selection import train_test_split
+from monai.data import Dataset
 
 class SpinalCanalStenosisDataset(Dataset):
     def __init__(self, 
@@ -50,6 +32,7 @@ class SpinalCanalStenosisDataset(Dataset):
                                    "spinal_canal_stenosis_l3_l4",
                                    "spinal_canal_stenosis_l4_l5",
                                    "spinal_canal_stenosis_l5_s1"]]
+        
         self.labels = self.labels.replace(text2int)
         
         exclude_vol = []
@@ -227,80 +210,3 @@ class ForaminalNarrowingDataset(Dataset):
             patches_right = self.transform(patches_right)
         
         return patches_left, patches_right, label, study_id
-
-class RSNADataset(Dataset):
-    """
-    Build a torch dataset, given a data folder containing volumes, a contrast and a dataframe of labels.
-    The data folder must respect BIDS convention.
-    
-    Args
-    ------
-    root_dir : str, name of the data folder
-    study_ids : list, list of subject ids included in the dataset
-    contrast : str, name of the contrast considered. among ["T1", "T2"]
-    orientation : str, name of the orientation. among ["ax", "sag"]
-    label_df : pd.DataFrame, dataframe with labels of each subject
-    exclude : list (optional), list of subjects to exclude    
-    """
-    def __init__(self, root_dir : str, study_ids : list, 
-                 seqtype : str, label_df : pd.DataFrame, 
-                 exclude : list = None, transform : any = None):
-                
-        orientation, contrast = seqtype.split("-")
-        
-        self.transform = transform
-        self.study_ids = []
-        self.images_paths = []
-        self.labels = []
-        
-        # Storing paths to volumes
-        for i, study_id in tqdm(enumerate(study_ids)):
-            
-            pursuie = True
-            if exclude is not None:
-                for sub in exclude : 
-                    if str(study_id) in sub:
-                        pursuie = False 
-            
-            if pursuie:
-                paths = glob.glob(root_dir+"/sub-"+str(study_id)+"/anat/*"+orientation+"*"+contrast+"*.nii.gz")
-                try :
-                    path = paths[0]
-                    self.study_ids.append(study_id)
-                    self.images_paths.append(path)                        
-                    label = label_df[label_df["study_id"]==study_id].values[0, 1:].astype(int)
-                    if label.min() < 0 or label.max() > 2 :
-                        print(study_id)
-                        print(label)
-                    self.labels.append(label)
-                    
-                except :
-                    pass
-        
-    def __len__(self):
-        return len(self.study_ids)
-        
-    def __getitem__(self, index):
-        datad = {"image" : None, "label" : None, "study_id" : None}
-        
-        id = self.study_ids[index]
-        label = self.labels[index]
-        # n = len(label)
-        # y = torch.zeros((n, 3))
-        # for i in range(n):
-        #     if label[i]==0:
-        #         y[i] = torch.tensor([1, 0, 0])
-        #     if label[i]==1:
-        #         y[i] = torch.tensor([0, 1, 0])
-        #     if label[i]==2:
-        #         y[i] = torch.tensor([0, 0, 1]) 
-    
-        datad["image"] = self.images_paths[index]
-        datad["label"] = torch.Tensor(label).to(torch.long)
-        datad["study_id"] = id
-        
-        if self.transform is not None:
-            return self.transform(datad)
-
-        else:            
-            return datad
