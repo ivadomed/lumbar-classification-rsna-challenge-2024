@@ -210,3 +210,94 @@ class ForaminalNarrowingDataset(Dataset):
             patches_right = self.transform(patches_right)
         
         return patches_left, patches_right, label, study_id
+    
+    
+class SubarticularStenosisDataset(Dataset):
+    def __init__(self, 
+                 root_dir : str = "../../duke/public/rsna_challenge/train_images_patched/",
+                 labels_csv : str = "../data/train.csv",
+                 transform : any = None, 
+                 exclude : list = []):
+        
+        
+        text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
+        
+        self.transform = transform
+        self.root_dir = root_dir
+        
+        self.seg_paths = glob.glob(root_dir+"*/*ax*T2w*L*_patch_seg.nii.gz") 
+        self.vol_paths = glob.glob(root_dir+"*/*ax*T2w*L*_patch.nii.gz")
+        
+        self.labels = pd.read_csv(labels_csv)
+        self.labels = self.labels[["study_id",
+                                   "right_subarticular_stenosis_l1_l2",
+                                   "right_subarticular_stenosis_l2_l3",
+                                   "right_subarticular_stenosis_l3_l4",
+                                   "right_subarticular_stenosis_l4_l5",
+                                   "right_subarticular_stenosis_l5_s1",
+                                   "left_subarticular_stenosis_l1_l2",
+                                   "left_subarticular_stenosis_l2_l3",
+                                   "left_subarticular_stenosis_l3_l4",
+                                   "left_subarticular_stenosis_l4_l5",
+                                   "left_subarticular_stenosis_l5_s1"]]
+        
+        rows_with_nan = self.labels[self.labels.isna().any(axis=1)]
+        excludes = exclude + list(rows_with_nan.values[:,0])
+        self.labels = self.labels.dropna()
+        self.labels = self.labels.replace(text2int)
+         
+        exclude_vol = []
+        exclude_seg = []
+        
+        
+        
+        for study_id in excludes:
+            for i in range(len(self.vol_paths)):
+                if "sub-"+str(study_id) in self.vol_paths[i]:
+                    exclude_vol.append(self.vol_paths[i])
+                    exclude_seg.append(self.seg_paths[i])
+            
+        for x in exclude_vol:
+            self.vol_paths.remove(x)
+            
+        for x in exclude_seg:
+            self.seg_paths.remove(x) 
+            
+        print(len(self.vol_paths))
+            
+        
+        self.seg_paths.sort()
+        self.vol_paths.sort()
+
+        
+    def __len__(self):
+        return len(self.vol_paths)
+        
+    def __getitem__(self, idx):
+        
+        vol_path = self.vol_paths[idx]
+        x = vol_path.split("/")[-1]
+        
+        study_id = x.split("_")[0][4:]
+        lvl =  x.split("_")[-3] + "_" + x.split("_")[-2]
+        lvl = lvl.lower()
+                
+        label = self.labels[self.labels["study_id"]==int(study_id)][["left_subarticular_stenosis_"+lvl,
+                                                                     "right_subarticular_stenosis_"+lvl]].values[0].astype(int)
+        
+        print(label)
+        
+        
+        vol = Image(vol_path)
+        vol.change_orientation("ASL")
+        vol = vol.data
+        
+        _, _, D = vol.shape
+
+        patch_left, patch_right = vol[:,:,:D//2], vol[:,:,D//2:]
+                        
+        if self.transform is not None:
+            patch_left = self.transform(patch_left)
+            patch_right = self.transform(patch_right)
+        
+        return patch_left, patch_right, label, study_id
