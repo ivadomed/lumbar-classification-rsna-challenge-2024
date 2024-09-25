@@ -2,18 +2,17 @@
 This Python script aims at training classification models for the
 RSNA 2024 kaggle data challenge. 
 
-We focus on Neural Foraminal Narrowing diagnosis.
+We focus on Subarticular Stenosis.
 
 Author : Simon Queric
-2024-09-10
+2024-09-18
 
 """
 
-import sys
 import yaml
 import numpy as np
-import nibabel as nib
 import pandas as pd
+from scipy.special import softmax
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -32,7 +31,6 @@ from sklearn.metrics import (
     classification_report,
     f1_score,
 )
-
 
 from monai.data import DataLoader
 from utils import *
@@ -53,6 +51,8 @@ from monai.transforms import (
     RandFlipd,
     Resized,
     NormalizeIntensityd,
+    NormalizeIntensity,
+    ResizeWithPadOrCrop,
     GaussianSmoothd,
 )
 from monai.networks.nets import ResNet, EfficientNetBN, ViT
@@ -85,14 +85,12 @@ def train(
     train_loader,
     train_data,
     val_loader,
-    val_data,
     device,
     writer_train,
-    autocast,
     scaler,
-    experiment,
     seqtype,
     val_interval,
+    model_name,
 ):
     """
     This function train a model for the RSNA kaggle data challenge.
@@ -113,7 +111,6 @@ def train(
         model.train()
         epoch_loss = 0
         step = 0
-        levels = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
 
         for batch_data in tqdm(train_loader):
             step += 1
@@ -122,19 +119,15 @@ def train(
             loss = 0
 
             try:
-                patches_left, patches_right, label, study_id = batch_data
+                patch_left, patch_right, label, study_id = batch_data
+                outputs = model(patch_left.to(device))
 
-                # for i in range(C):
-
-                #     outputs = model(patches_left[levels[i]].to(device))
-                #     loss += criterion(outputs, label[:, i].to(device))
-                for i in range(C):
-
-                    outputs = model(patches_right[levels[i]].to(device))
-                    loss += criterion(outputs, label[:, 5 + i].to(device))
+                loss += criterion(outputs, label[:, 0].to(device))
+                outputs = model(patch_right.to(device))
+                loss += criterion(outputs, label[:, 1].to(device))
 
                 epoch_len = len(train_data) // train_loader.batch_size
-                total_loss = loss.item() / C  # (2*C)
+                total_loss = loss.item() / 2
                 epoch_loss += total_loss
                 scaler.scale(loss).backward()
                 optimizer.step()
@@ -144,7 +137,7 @@ def train(
                 )
 
             except Exception as e:
-                print(f"Exception {e}")
+                print(f"Exception {e}", study_id)
 
             # except RuntimeError as e:
             #     print("Runtime error on subéject ", id)
@@ -169,16 +162,16 @@ def train(
                 total_loss = 0
 
                 try:
-                    patches_left, patches_right, label, study_id = batch_data
+                    patch_left, patch_right, label, study_id = batch_data
                     loss = 0
-                    for i in range(C):
-                        # outputs, _ = model(patches[levels[i]].to(device))
-                        # outputs = model(patches_left[levels[i]].to(device))
-                        # loss += criterion(outputs[:], label[:, i].to(device))
-                        outputs = model(patches_right[levels[i]].to(device))
-                        loss += criterion(outputs[:], label[:, 5 + i].to(device))
+                    outputs = model(patch_left.to(device))
+
+                    loss += criterion(outputs, label[:, 0].to(device))
+                    outputs = model(patch_right.to(device))
+                    loss += criterion(outputs, label[:, 1].to(device))
+
                     epoch_len = len(train_data) // train_loader.batch_size
-                    total_loss = loss.item() / C  # (2*C)
+                    total_loss = loss.item() / 2
                     metric_eval += total_loss
                 except Exception as e:
                     print(f"Exception {e}")
@@ -189,12 +182,17 @@ def train(
                 best_metric = metric_eval
                 best_metric_epoch = epoch + 1
                 torch.save(
-                    model.state_dict(), f"checkpoints/grading_network_{seqtype}.pth"
+                    model.state_dict(),
+                    f"checkpoints/grading_network_{model_name}_{seqtype}.pth",
                 )
                 print("saved new best metric model")
 
             print(f"Current epoch: {epoch+1} current metric: {metric_eval:.4f} ")
             print(f"Best accuracy: {best_metric:.4f} at epoch {best_metric_epoch}")
+
+    torch.save(
+        model.state_dict(), f"checkpoints/grading_network_{model_name}_{seqtype}.pth"
+    )
 
     # print(
     #     f"Training completed, best_metric: {best_metric:.4f} at epoch: {best_metric_epoch}"
@@ -204,49 +202,39 @@ def train(
     return exceptions, epoch_loss_values, metric_values
 
 
-def test(model, test_loader, test_data, criterion, device, seqtype):
+def test(model, test_loader, test_data, criterion, device):
+
     levels = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
     model.eval()
     num_correct = 0
     metric_count = 0
     total_loss = 0
-    y_true = []
-    y_pred = []
+    y_true = {"L1/L2": [], "L2/L3": [], "L3/L4": [], "L4/L5": [], "L5/S1": []}
+    y_pred = {"L1/L2": [], "L2/L3": [], "L3/L4": [], "L4/L5": [], "L5/S1": []}
 
     C = 5
 
     for batch_data in tqdm(test_loader):
-
-        patches_left, patches_right, label, study_id = batch_data
+        patch_left, patch_right, label, study_id = batch_data
 
         with torch.no_grad():
             loss = 0
             for i in range(C):
-                # outputs, _ = model(patches[levels[i]].to(device))
-                # outputs = model(patches_left[levels[i]].to(device))
+                outputs = model(patch_left.to(device))
 
-                # loss += criterion(outputs[:], label[:, i].to(device))
-
-                # # print(list(outputs.argmax(dim=-1).cpu().numpy()))
-                # y_pred += list(outputs.cpu().numpy())
-                # y_true += list(label[:,i].cpu().numpy())
-                # value = torch.eq(outputs.argmax(dim=-1).cpu(), label[:, i])
-                # metric_count += len(value)
-                # num_correct += value.sum().item()
-
-                outputs = model(patches_right[levels[i]].to(device))
-
-                loss += criterion(outputs[:], label[:, C + i].to(device))
+                loss += criterion(outputs, label[:, 0].to(device))
+                outputs = model(patch_right.to(device))
+                loss += criterion(outputs, label[:, 1].to(device))
 
                 # print(list(outputs.argmax(dim=-1).cpu().numpy()))
-                y_pred += list(outputs.cpu().numpy())
-                y_true += list(label[:, i].cpu().numpy())
+                y_pred[levels[i]] += list(outputs.cpu().numpy())
+                y_true[levels[i]] += list(label[:, i].cpu().numpy())
                 value = torch.eq(outputs.argmax(dim=-1).cpu(), label[:, i])
                 metric_count += len(value)
                 num_correct += value.sum().item()
 
                 # print(outputs)
-            total_loss += loss.item() / C  # (2*C)
+            total_loss += loss.item() / 5
 
     metric = num_correct / metric_count
     epoch_len = len(test_data) // test_loader.batch_size
@@ -297,8 +285,7 @@ def main():
             "right_neural_foraminal_narrowing",
         ],
         "sag-T2": ["spinal_canal_stenosis"],
-        "left-ax-T2": ["left_subarticular_stenosis"],
-        "right-ax-T2": ["right_subarticular_stenosis"],
+        "ax-T2": ["left_subarticular_stenosis", "right_subarticular_stenosis"],
     }
 
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
@@ -318,7 +305,7 @@ def main():
     id_label = id_label.replace(text2int)
     study_ids = id_label.values[:, 0].astype(int)  # store id of each subject
 
-    print(study_ids)
+    # print(study_ids)
 
     # subjects to exclude
 
@@ -330,40 +317,25 @@ def main():
 
     transform = Compose(
         [
-            NormalizeIntensityd(keys=["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]),
-            ResizeWithPadOrCropd(
-                keys=["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"],
-                spatial_size=(8, 48, 96),
-            ),
+            NormalizeIntensity(),
+            ResizeWithPadOrCrop(spatial_size=(156, 8, 64)),
         ]
     )
 
     exclude = ["3637444890"]
 
-    root_dir = "../TotalSpineSeg"
+    root_dir = "../duke/public/rsna_challenge/train_images_patched/"
 
-    vol_paths = glob.glob(root_dir + "/data/sub*T2w.nii.gz")
-    seg_paths = glob.glob(root_dir + "/output/step1_output/*T2w.nii.gz")
+    vol_paths = glob.glob(root_dir + "*/*ax*T2w*L*_patch.nii.gz")
+
+    # seg_paths = glob.glob(root_dir+"/output/step2_output/*T2w.nii.gz")
 
     for x in exclude:
         for pth in vol_paths:
             if x in pth:
                 vol_paths.remove(pth)
-                print(x)
-        for pth in seg_paths:
-            if x in pth:
-                seg_paths.remove(pth)
-                print(x)
 
     vol_paths.sort()
-    seg_paths.sort()
-
-    train_vols, val_vols, train_seg, val_seg = train_test_split(
-        vol_paths, seg_paths, test_size=0.3, random_state=42
-    )
-    val_vols, test_vols, val_seg, test_seg = train_test_split(
-        val_vols, val_seg, test_size=0.5, random_state=42
-    )
 
     train_df = pd.read_csv("./data/train.csv")
     train_df = train_df.dropna()
@@ -405,29 +377,22 @@ def main():
 
     df.rename(columns={0: "count"}, inplace=True)
     idx = np.where(df.values[:, 0] <= 5)
-    exclude = np.random.choice(idx[0], size=len(idx[0]) // 2, replace=False)
+    exclude = np.random.choice(idx[0], size=700, replace=False)
     exclude = list(train_df.iloc[exclude]["study_id"].values)
 
-    train_data = ForaminalNarrowingDataset(
-        root_dir=root_dir,
-        vol_paths=train_vols,
-        seg_paths=train_seg,
-        transform=transform,
-        exclude=exclude,
+    train_vols, val_vols = train_test_split(vol_paths, test_size=0.5, random_state=42)
+    val_vols, test_vols = train_test_split(val_vols, test_size=0.5, random_state=42)
+
+    train_data = SubarticularStenosisDataset(
+        vol_paths=train_vols, labels_csv="./data/train.csv", transform=transform
     )
-    val_data = ForaminalNarrowingDataset(
-        root_dir=root_dir,
-        vol_paths=val_vols,
-        seg_paths=val_seg,
-        transform=transform,
-        exclude=exclude,
+
+    val_data = SubarticularStenosisDataset(
+        vol_paths=val_vols, labels_csv="./data/train.csv", transform=transform
     )
-    test_data = ForaminalNarrowingDataset(
-        root_dir=root_dir,
-        vol_paths=test_vols,
-        seg_paths=test_seg,
-        transform=transform,
-        exclude=list(),
+
+    test_data = SubarticularStenosisDataset(
+        vol_paths=test_vols, labels_csv="./data/train.csv", transform=transform
     )
 
     print("Train dataset length :", len(train_data))
@@ -457,6 +422,8 @@ def main():
         num_classes=3,
     ).to(device)
 
+    model_name = "ResNet17"
+
     # ViT
 
     # model = ViT(in_channels=1,
@@ -479,6 +446,8 @@ def main():
     #                 n_input_channels=1,
     #                 num_classes=3,
     #             ).to(device)
+
+    # model_name = "ResNet34"
 
     # Models, optimization method, loss criterion
 
@@ -503,14 +472,12 @@ def main():
             train_loader,
             train_data,
             val_loader,
-            val_data,
             device,
             writer_train,
-            autocast,
             scaler,
-            experiment,
             seqtype,
-            val_interval=val_interval,
+            val_interval,
+            model_name,
         )
 
         plt.figure()
@@ -545,14 +512,16 @@ def main():
     # exceptions = np.array(exceptions)
     # np.save("exceptions.npy", exceptions)
 
-    # model = ResNet(
-    #         block="basic",
-    #         layers=[3, 4, 6, 3],
-    #         block_inplanes=[64, 128, 256, 512],
-    #         spatial_dims=3,
-    #         n_input_channels=1,
-    #         num_classes=3,
-    # ).to(device)
+    model = ResNet(
+        block="basic",
+        layers=[2, 2, 2, 2],
+        block_inplanes=[64, 128, 256, 512],
+        spatial_dims=3,
+        n_input_channels=1,
+        num_classes=3,
+    ).to(device)
+
+    model_name = "ResNet17"
 
     # model = ViT(in_channels=1,
     #                 img_size=(4, 64, 64),
@@ -563,18 +532,33 @@ def main():
     #                 classification=True,
     #                 num_classes=3
     #                 ).to(device)
-    model = ResNet(
-        block="basic",
-        layers=[2, 2, 2, 2],
-        block_inplanes=[64, 128, 256, 512],
-        spatial_dims=3,
-        n_input_channels=1,
-        num_classes=3,
-    ).to(device)
+    # model = ResNet(
+    #             block="basic",
+    #             layers=[2, 2, 2, 2],
+    #             block_inplanes=[64, 128, 256, 512],
+    #             spatial_dims=3,
+    #             n_input_channels=1,
+    #             num_classes=3,
+    #         ).to(device)
 
-    print(f"Loading network weights checkpoints/grading_network_{seqtype}.pth")
-    model.load_state_dict(torch.load(f"checkpoints/grading_network_{seqtype}.pth"))
+    # model = ResNet(
+    #                 block="basic",
+    #                 layers=[3, 4, 6, 3],
+    #                 block_inplanes=[64, 128, 256, 512],
+    #                 spatial_dims=3,
+    #                 n_input_channels=1,
+    #                 num_classes=3,
+    #             ).to(device)
+
+    # model_name = "ResNet34"
+
+    print(f"checkpoints/grading_network_{model_name}_{seqtype}.pth")
+    model.load_state_dict(
+        torch.load(f"checkpoints/grading_network_{model_name}_{seqtype}.pth")
+    )
     model.eval()
+
+    levels = ["L1/L2", "L2/L3", "L3/L4", "L4/L5", "L5/S1"]
 
     metric, y_true, y_pred, total_loss = test(
         model=model,
@@ -582,67 +566,97 @@ def main():
         test_data=test_data,
         criterion=criterion,
         device=device,
-        seqtype=seqtype,
     )
+
+    np.save("y_pred.npy", y_pred)
+    np.save("y_true.npy", y_true)
 
     print("Total loss : {:.2f}".format(total_loss))
 
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
+    y_true_global = []
+    y_pred_global = []
+    y_pred_continuous = []
 
-    # n, k = y_pred.shape
+    for lvl in levels:
+        level = lvl.replace("/", "_")
+        y_true_lvl = np.array(y_true[lvl])
+        y_pred_lvl = np.array(y_pred[lvl])
+        y_pred_lvl = softmax(y_pred_lvl, axis=-1)
 
-    np.save("y_true.npy", y_true)
-    np.save("y_pred.npy", y_pred)
+        np.save("y_true.npy", y_true)
+        np.save("y_pred.npy", y_pred)
 
-    y_test = y_true  # .reshape(n*k)
-    y_pred = y_pred  # .reshape(n*k)
+        y_test = y_true_lvl
 
-    print(y_pred.shape)
-    print(y_true.shape)
-    pred = y_pred.argmax(axis=-1)
+        pred = y_pred_lvl.argmax(axis=-1)
+
+        y_true_global += list(y_test)
+        y_pred_global += list(pred)
+
+        # print(f"LEVEL {lvl}")
+        # print("Raw accuracy score on test set :", metric)
+        # print("Balanced accuracy score on test set : {:.2f}".format(balanced_accuracy_score(y_true=y_test, y_pred=new_pred)))
+        # print("F1 score on test set : {:.2f}".format(f1_score(y_true=y_test, y_pred=new_pred, average="macro")))
+
+        # labels = [0, 1, 2]
+        # cm = confusion_matrix(y_test, new_pred, labels=labels)
+        # print(type(cm))
+        # print(f"confusion matrix :")
+        # print(np.array(cm))
+        # row_sums = cm.sum(axis=1, keepdims=True)
+        # cm = cm / row_sums
+
+        # # row_sums = cm.sum(axis=1, keepdims=True)
+        # # cm = cm / row_sums
+
+        # # plt.imshow(cm, cmap="bwr")
+        # # plt.colorbar()
+        # # plt.savefig(f"normalized_confusion_matrix_{seqtype}_{level}.png")
+        # # plt.show()
+
+        # disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
+
+        # disp.plot()
+
+        # plt.imshow(cm)
+        # plt.savefig(f"confusion_matrix_{seqtype}_{level}.png")
+        # plt.show()
 
     print("Raw accuracy score on test set :", metric)
     print(
         "Balanced accuracy score on test set : {:.2f}".format(
-            balanced_accuracy_score(y_true=y_test, y_pred=pred)
+            balanced_accuracy_score(y_true=y_true_global, y_pred=y_pred_global)
         )
     )
     print(
         "F1 score on test set : {:.2f}".format(
-            f1_score(y_true=y_test, y_pred=pred, average="macro")
+            f1_score(y_true=y_true_global, y_pred=y_pred_global, average="macro")
         )
     )
 
     labels = [0, 1, 2]
-    cm = confusion_matrix(y_test, pred, labels=labels)
+    cm = confusion_matrix(y_true_global, y_pred_global, labels=labels)
     print(type(cm))
-    print("confusion matrix :", np.array(cm))
+    print(f"confusion matrix :")
+    print(np.array(cm))
 
     row_sums = cm.sum(axis=1, keepdims=True)
     cm = cm / row_sums
-
-    plt.imshow(cm, cmap="bwr")
-    plt.colorbar()
-    plt.savefig(f"normalized_confusion_matrix_{seqtype}.png")
-    plt.show()
 
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
 
     disp.plot()
 
     plt.imshow(cm)
-    plt.savefig(f"confusion_matrix_{seqtype}.png")
+    plt.savefig(f"figures/confusion_matrix_{seqtype}.png")
     plt.show()
 
-    # fpr, tpr, thresholds = roc_curve(y_true, 1-y_pred)
-    # roc_auc = auc(fpr, tpr)
-    # display = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=roc_auc,
-    #                                 estimator_name='CNN')
-
-    # display.plot()
-    # plt.savefig("roc.png")
+    # fig = plt.figure()
+    # plt.hist(y_pred_continuous, bins="auto", edgecolor="k")
+    # plt.savefig("figuresHistogram_of_empirical_mean_output.png")
     # plt.show()
+
+    ## TODO : plot histogram for wrong prediction
 
 
 if __name__ == "__main__":

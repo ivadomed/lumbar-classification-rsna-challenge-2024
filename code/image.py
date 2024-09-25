@@ -6,13 +6,16 @@ from copy import deepcopy
 
 logger = logging.getLogger(__name__)
 
+
 class Image(object):
     """
     Compact version of SCT's Image Class (https://github.com/spinalcordtoolbox/spinalcordtoolbox/blob/master/spinalcordtoolbox/image.py#L245)
     Create an object that behaves similarly to nibabel's image object. Useful additions include: dims, change_orientation and getNonZeroCoordinates.
     """
 
-    def __init__(self, param=None, hdr=None, orientation=None, absolutepath=None, dim=None):
+    def __init__(
+        self, param=None, hdr=None, orientation=None, absolutepath=None, dim=None
+    ):
         """
         :param param: string indicating a path to a image file or an `Image` object.
         """
@@ -25,7 +28,7 @@ class Image(object):
 
         if absolutepath is not None:
             self._path = os.path.abspath(absolutepath)
-        
+
         # Case 1: load an image from file
         if isinstance(param, str):
             self.loadFromPath(param)
@@ -43,19 +46,19 @@ class Image(object):
             self.hdr = hdr.copy() if hdr is not None else nib.Nifti1Header()
             self.hdr.set_data_shape(self.data.shape)
         else:
-            raise TypeError('Image constructor takes at least one argument.')
-    
+            raise TypeError("Image constructor takes at least one argument.")
+
         # Fix any mismatch between the array's datatype and the header datatype
         self.fix_header_dtype()
 
     @property
     def dim(self):
         return get_dimension(self)
-    
+
     @property
     def orientation(self):
         return get_orientation(self)
-    
+
     @property
     def absolutepath(self):
         """
@@ -73,7 +76,7 @@ class Image(object):
         the best way to set it.
         """
         return self._path
-    
+
     @absolutepath.setter
     def absolutepath(self, value):
         if value is None:
@@ -84,7 +87,7 @@ class Image(object):
         elif not os.path.isabs(value):
             value = os.path.abspath(value)
         self._path = value
-    
+
     @property
     def header(self):
         return self.hdr
@@ -94,7 +97,13 @@ class Image(object):
         self.hdr = value
 
     def __deepcopy__(self, memo):
-        return type(self)(deepcopy(self.data, memo), deepcopy(self.hdr, memo), deepcopy(self.orientation, memo), deepcopy(self.absolutepath, memo), deepcopy(self.dim, memo))
+        return type(self)(
+            deepcopy(self.data, memo),
+            deepcopy(self.hdr, memo),
+            deepcopy(self.orientation, memo),
+            deepcopy(self.absolutepath, memo),
+            deepcopy(self.dim, memo),
+        )
 
     def copy(self, image=None):
         if image is not None:
@@ -119,9 +128,20 @@ class Image(object):
         self.data = np.asanyarray(im_file.dataobj)
         self.hdr = im_file.header.copy()
         if path != self.absolutepath:
-            logger.debug("Loaded %s (%s) orientation %s shape %s", path, self.absolutepath, self.orientation, self.data.shape)
+            logger.debug(
+                "Loaded %s (%s) orientation %s shape %s",
+                path,
+                self.absolutepath,
+                self.orientation,
+                self.data.shape,
+            )
         else:
-            logger.debug("Loaded %s orientation %s shape %s", path, self.orientation, self.data.shape)
+            logger.debug(
+                "Loaded %s orientation %s shape %s",
+                path,
+                self.orientation,
+                self.data.shape,
+            )
 
     def change_orientation(self, orientation, inverse=False):
         """
@@ -136,7 +156,7 @@ class Image(object):
         """
         change_orientation(self, orientation, self, inverse=inverse)
         return self
-    
+
     def getNonZeroCoordinates(self, sorting=None, reverse_coord=False):
         """
         This function return all the non-zero coordinates that the image contains.
@@ -155,32 +175,49 @@ class Image(object):
 
         if n_dim == 3:
             X, Y, Z = (self.data > 0).nonzero()
-            list_coordinates = [[X[i], Y[i], Z[i], self.data[X[i], Y[i], Z[i]]] for i in range(0, len(X))]
+            list_coordinates = [
+                [X[i], Y[i], Z[i], self.data[X[i], Y[i], Z[i]]]
+                for i in range(0, len(X))
+            ]
         elif n_dim == 2:
             try:
                 X, Y = (self.data > 0).nonzero()
-                list_coordinates = [[X[i], Y[i], 0, self.data[X[i], Y[i]]] for i in range(0, len(X))]
+                list_coordinates = [
+                    [X[i], Y[i], 0, self.data[X[i], Y[i]]] for i in range(0, len(X))
+                ]
             except ValueError:
                 X, Y, Z = (self.data > 0).nonzero()
-                list_coordinates = [[X[i], Y[i], 0, self.data[X[i], Y[i], 0]] for i in range(0, len(X))]
+                list_coordinates = [
+                    [X[i], Y[i], 0, self.data[X[i], Y[i], 0]] for i in range(0, len(X))
+                ]
 
         if sorting is not None:
             if reverse_coord not in [True, False]:
-                raise ValueError('reverse_coord parameter must be a boolean')
+                raise ValueError("reverse_coord parameter must be a boolean")
 
-            if sorting == 'x':
-                list_coordinates = sorted(list_coordinates, key=lambda el: el[0], reverse=reverse_coord)
-            elif sorting == 'y':
-                list_coordinates = sorted(list_coordinates, key=lambda el: el[1], reverse=reverse_coord)
-            elif sorting == 'z':
-                list_coordinates = sorted(list_coordinates, key=lambda el: el[2], reverse=reverse_coord)
-            elif sorting == 'value':
-                list_coordinates = sorted(list_coordinates, key=lambda el: el[3], reverse=reverse_coord)
+            if sorting == "x":
+                list_coordinates = sorted(
+                    list_coordinates, key=lambda el: el[0], reverse=reverse_coord
+                )
+            elif sorting == "y":
+                list_coordinates = sorted(
+                    list_coordinates, key=lambda el: el[1], reverse=reverse_coord
+                )
+            elif sorting == "z":
+                list_coordinates = sorted(
+                    list_coordinates, key=lambda el: el[2], reverse=reverse_coord
+                )
+            elif sorting == "value":
+                list_coordinates = sorted(
+                    list_coordinates, key=lambda el: el[3], reverse=reverse_coord
+                )
             else:
-                raise ValueError("sorting parameter must be either 'x', 'y', 'z' or 'value'")
+                raise ValueError(
+                    "sorting parameter must be either 'x', 'y', 'z' or 'value'"
+                )
 
         return list_coordinates
-    
+
     def change_type(self, dtype):
         """
         Change data type on image.
@@ -189,7 +226,7 @@ class Image(object):
         """
         change_type(self, dtype, self)
         return self
-    
+
     def fix_header_dtype(self):
         """
         Change the header dtype to the match the datatype of the array.
@@ -202,10 +239,12 @@ class Image(object):
 
         dtype_header = self.hdr.get_data_dtype()
         if dtype_header != dtype_data:
-            logger.warning(f"Image header specifies datatype '{dtype_header}', but array is of type "
-                           f"'{dtype_data}'. Header metadata will be overwritten to use '{dtype_data}'.")
+            logger.warning(
+                f"Image header specifies datatype '{dtype_header}', but array is of type "
+                f"'{dtype_data}'. Header metadata will be overwritten to use '{dtype_data}'."
+            )
             self.hdr.set_data_dtype(dtype_data)
-    
+
     def save(self, path=None, dtype=None, verbose=1, mutable=False):
         """
         Write an image in a nifti file
@@ -240,14 +279,22 @@ class Image(object):
                 if self.absolutepath:  # Fallback to the original filepath
                     path = self.absolutepath
                 else:
-                    raise ValueError("Don't know where to save the image (no absolutepath or path parameter)")
+                    raise ValueError(
+                        "Don't know where to save the image (no absolutepath or path parameter)"
+                    )
             # Case 2: `path` points to an existing directory
             elif os.path.isdir(path):
-                if self.absolutepath:  # Use the original filename, but save to the directory specified by `path`
-                    path = os.path.join(os.path.abspath(path), os.path.basename(self.absolutepath))
+                if (
+                    self.absolutepath
+                ):  # Use the original filename, but save to the directory specified by `path`
+                    path = os.path.join(
+                        os.path.abspath(path), os.path.basename(self.absolutepath)
+                    )
                 else:
-                    raise ValueError("Don't know where to save the image (path parameter is dir, but absolutepath is "
-                                     "missing)")
+                    raise ValueError(
+                        "Don't know where to save the image (path parameter is dir, but absolutepath is "
+                        "missing)"
+                    )
             # Case 3: `path` points to a file (or a *nonexistent* directory) so use its value as-is
             #    (We're okay with letting nonexistent directories slip through, because it's difficult to distinguish
             #     between nonexistent directories and nonexistent files. Plus, `nibabel` will catch any further errors.)
@@ -257,11 +304,20 @@ class Image(object):
             if os.path.isfile(path) and verbose:
                 logger.warning("File %s already exists. Will overwrite it.", path)
             if os.path.isabs(path):
-                logger.debug("Saving image to %s orientation %s shape %s",
-                             path, self.orientation, self.data.shape)
+                logger.debug(
+                    "Saving image to %s orientation %s shape %s",
+                    path,
+                    self.orientation,
+                    self.data.shape,
+                )
             else:
-                logger.debug("Saving image to %s (%s) orientation %s shape %s",
-                             path, os.path.abspath(path), self.orientation, self.data.shape)
+                logger.debug(
+                    "Saving image to %s (%s) orientation %s shape %s",
+                    path,
+                    os.path.abspath(path),
+                    self.orientation,
+                    self.data.shape,
+                )
 
             # Now that `path` has been set and log messages have been written, we can assign it to the image itself
             self.absolutepath = os.path.abspath(path)
@@ -299,7 +355,14 @@ class SlicerOneAxis(object):
     """
 
     def __init__(self, im, axis="IS"):
-        opposite_character = {'L': 'R', 'R': 'L', 'A': 'P', 'P': 'A', 'I': 'S', 'S': 'I'}
+        opposite_character = {
+            "L": "R",
+            "R": "L",
+            "A": "P",
+            "P": "A",
+            "I": "S",
+            "S": "I",
+        }
         axis_labels = "LRPAIS"
         if len(axis) != 2:
             raise ValueError()
@@ -323,7 +386,9 @@ class SlicerOneAxis(object):
         self.nb_slices = im.dim[dim_nr]
         self.im = im
         self.axis = axis
-        self._slice = lambda idx: tuple([(idx if x in axis else slice(None)) for x in im.orientation])
+        self._slice = lambda idx: tuple(
+            [(idx if x in axis else slice(None)) for x in im.orientation]
+        )
 
     def __len__(self):
         return self.nb_slices
@@ -345,6 +410,7 @@ class SlicerOneAxis(object):
 
         return self.im.data[self._slice(idx)]
 
+
 def get_dimension(im_file, verbose=1):
     """
     Copied from https://github.com/spinalcordtoolbox/spinalcordtoolbox/
@@ -355,7 +421,9 @@ def get_dimension(im_file, verbose=1):
     :return: nx, ny, nz, nt, px, py, pz, pt
     """
     if not isinstance(im_file, (nib.nifti1.Nifti1Image, Image)):
-        raise TypeError("The provided image file is neither a nibabel.nifti1.Nifti1Image instance nor an Image instance")
+        raise TypeError(
+            "The provided image file is neither a nibabel.nifti1.Nifti1Image instance nor an Image instance"
+        )
     # initializating ndims [nx, ny, nz, nt] and pdims [px, py, pz, pt]
     ndims = [1, 1, 1, 1]
     pdims = [1, 1, 1, 1]
@@ -408,12 +476,14 @@ def change_orientation(im_src, orientation, im_dst=None, inverse=False):
 
     im_src_data = im_src.data
     if len(im_src_data.shape) < 3:
-        im_src_data = im_src_data.reshape(tuple(list(im_src_data.shape) + ([1] * (3 - len(im_src_data.shape)))))
+        im_src_data = im_src_data.reshape(
+            tuple(list(im_src_data.shape) + ([1] * (3 - len(im_src_data.shape))))
+        )
 
     # Update data by performing inversions and swaps
 
     # axes inversion (flip)
-    data = im_src_data[::inversion[0], ::inversion[1], ::inversion[2]]
+    data = im_src_data[:: inversion[0], :: inversion[1], :: inversion[2]]
 
     # axes manipulations (transpose)
     if perm == [1, 0, 2]:
@@ -438,8 +508,8 @@ def change_orientation(im_src, orientation, im_dst=None, inverse=False):
 
     im_src_aff = im_src.hdr.get_best_affine()
     aff = nib.orientations.inv_ornt_aff(
-        np.array((perm, inversion)).T,
-        im_src_data.shape)
+        np.array((perm, inversion)).T, im_src_data.shape
+    )
     im_dst_aff = np.matmul(im_src_aff, aff)
 
     im_dst.header.set_qform(im_dst_aff)
@@ -459,7 +529,7 @@ def _get_permutations(im_src_orientation, im_dst_orientation):
     :return: list of axes permutations and list of inversions to achieve an orientation change
     """
 
-    opposite_character = {'L': 'R', 'R': 'L', 'A': 'P', 'P': 'A', 'I': 'S', 'S': 'I'}
+    opposite_character = {"L": "R", "R": "L", "A": "P", "P": "A", "I": "S", "S": "I"}
 
     perm = [0, 1, 2]
     inversion = [1, 1, 1]
@@ -490,7 +560,7 @@ def orientation_string_nib2sct(s):
 
     :return: SCT reference space code from nibabel one
     """
-    opposite_character = {'L': 'R', 'R': 'L', 'A': 'P', 'P': 'A', 'I': 'S', 'S': 'I'}
+    opposite_character = {"L": "R", "R": "L", "A": "P", "P": "A", "I": "S", "S": "I"}
     return "".join([opposite_character[x] for x in s])
 
 
@@ -532,12 +602,12 @@ def change_type(im_src, dtype, im_dst=None):
     max_in = np.nanmax(im_src.data)
 
     # find optimum type for the input image
-    if dtype in ('minimize', 'minimize_int'):
+    if dtype in ("minimize", "minimize_int"):
         # warning: does not take intensity resolution into account, neither complex voxels
 
         # check if voxel values are real or integer
         isInteger = True
-        if dtype == 'minimize':
+        if dtype == "minimize":
             for vox in im_src.data.flatten():
                 if int(vox) != vox:
                     isInteger = False
@@ -554,24 +624,43 @@ def change_type(im_src, dtype, im_dst=None):
                 elif max_in <= np.iinfo(np.uint64).max:
                     dtype = np.uint64
                 else:
-                    raise ValueError("Maximum value of the image is to big to be represented.")
+                    raise ValueError(
+                        "Maximum value of the image is to big to be represented."
+                    )
             else:
                 if max_in <= np.iinfo(np.int8).max and min_in >= np.iinfo(np.int8).min:
                     dtype = np.int8
-                elif max_in <= np.iinfo(np.int16).max and min_in >= np.iinfo(np.int16).min:
+                elif (
+                    max_in <= np.iinfo(np.int16).max
+                    and min_in >= np.iinfo(np.int16).min
+                ):
                     dtype = np.int16
-                elif max_in <= np.iinfo(np.int32).max and min_in >= np.iinfo(np.int32).min:
+                elif (
+                    max_in <= np.iinfo(np.int32).max
+                    and min_in >= np.iinfo(np.int32).min
+                ):
                     dtype = np.int32
-                elif max_in <= np.iinfo(np.int64).max and min_in >= np.iinfo(np.int64).min:
+                elif (
+                    max_in <= np.iinfo(np.int64).max
+                    and min_in >= np.iinfo(np.int64).min
+                ):
                     dtype = np.int64
                 else:
-                    raise ValueError("Maximum value of the image is to big to be represented.")
+                    raise ValueError(
+                        "Maximum value of the image is to big to be represented."
+                    )
         else:
             # if max_in <= np.finfo(np.float16).max and min_in >= np.finfo(np.float16).min:
             #    type = 'np.float16' # not supported by nibabel
-            if max_in <= np.finfo(np.float32).max and min_in >= np.finfo(np.float32).min:
+            if (
+                max_in <= np.finfo(np.float32).max
+                and min_in >= np.finfo(np.float32).min
+            ):
                 dtype = np.float32
-            elif max_in <= np.finfo(np.float64).max and min_in >= np.finfo(np.float64).min:
+            elif (
+                max_in <= np.finfo(np.float64).max
+                and min_in >= np.finfo(np.float64).min
+            ):
                 dtype = np.float64
 
         dtype = to_dtype(dtype)
@@ -587,7 +676,9 @@ def change_type(im_src, dtype, im_dst=None):
 
             if (min_in < min_out) or (max_in > max_out):
                 # This condition is important for binary images since we do not want to scale them
-                logger.warning(f"To avoid intensity overflow due to convertion to +{dtype.name}+, intensity will be rescaled to the maximum quantization scale")
+                logger.warning(
+                    f"To avoid intensity overflow due to convertion to +{dtype.name}+, intensity will be rescaled to the maximum quantization scale"
+                )
                 # rescale intensity
                 data_rescaled = im_src.data * (max_out - min_out) / (max_in - min_in)
                 im_dst.data = data_rescaled - (data_rescaled.min() - min_out)
@@ -670,7 +761,7 @@ def find_zmin_zmax(im, threshold=0.1):
 
     # Make sure image is not empty
     if not np.any(slicer):
-        logger.error('Input image is empty')
+        logger.error("Input image is empty")
 
     # Iterate from bottom to top until we find data
     for zmin in range(0, len(slicer)):
