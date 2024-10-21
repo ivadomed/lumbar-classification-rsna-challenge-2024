@@ -10,3 +10,5 @@ Then, as our goal is to operate __pathology classfication__ on various parts of 
 Finally , we __registrate__ the sagittal segmentation into the axial spaces, to be able to localize in every space, and we __extract the patches__ we're interested in for all of the 5 pathologies we have to classify, at __5 different disks levels (L1/L2, L2/L3, L3/L4, L4/L5, L5/S1)__. This is **step 3** : **extraction.py**
 
 Then we will be able to train and apply the classifying heads from the other branches. 
+
+Files can contain commented lines of code for importations on kaggle notebooks at their beginning. You will need to run those to replicate the preprocesing in a kaggle notebook. 
