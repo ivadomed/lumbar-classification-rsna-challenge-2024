@@ -106,7 +106,7 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
         description = ptobj['SeriesDescriptions'][idx]
 
         convert_dicom_to_nifti(subject_id, series_uid, input_path, output_path)
-        new_paths = merge_nifti_volumes(output_path, output_path, subject_id, series_uid)
+        new_paths = merge_nifti_volumes(output_path, subject_id, series_uid)
         if 'Axial' in description and 'T2' in description:
                 modality = 'T2w'
                 acq = 'ax'
