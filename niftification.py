@@ -1,7 +1,7 @@
 ## STEP 1 ##
 
-# this is the first part of the preprocessing pipe line
-# it aims to convert the raw data to nifti format and save it with a bids format
+# this is the first part of the preprocessing pipeline
+# it aims to convert the raw data to nifti format and save it with the BIDS convention
 
 import os
 import subprocess
