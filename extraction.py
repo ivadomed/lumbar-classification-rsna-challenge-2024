@@ -1,3 +1,9 @@
+## STEP 3 ##
+
+# this is last part of the preprocessing pipeline
+# its goal is to extract the patches from the nii volumes based on the segmentation 
+
+
 import os
 import sys
 import nibabel as nib
@@ -7,6 +13,14 @@ from pathlib import Path
 import torchio as tio
 
 def process_directory_other(main_dir):
+     '''
+    Transform the segmentations in main_dir folder to the image space to have the same origin, spacing, direction and shape as the image.
+
+    Parameters
+    main_dir: where to fetch the segmentations
+    
+    '''
+
     main_dir_path = Path(main_dir)
     
     # Iterate through each subdirectory (for each patient)
@@ -272,22 +286,21 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
 
 def main():
     # Ensure a directory argument is passed
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print("Usage: python extraction.py [data_directory]")
         sys.exit(1)
     
     # Get the root directory from the command-line argument
     root_dir = sys.argv[1]
+    output_dir = sys.argv[2]
     
-    # Define the output root directory with a "_patches" suffix
-    output_root_dir = f'{root_dir}_patches'
-    os.makedirs(output_root_dir, exist_ok=True)
+    
     
     process_directory_other(root_dir)
 
 
     # Run the processing function for all subjects in the specified directory
-    process_all_subjects_in_directory(root_dir, output_root_dir)
+    process_all_subjects_in_directory(root_dir, output_dir)
 
 if __name__ == "__main__":
     main()

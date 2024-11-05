@@ -1,8 +1,21 @@
+## STEP 2 ##
+
+# Second part of the preprocessing pipeline
+# Applies totalspineseg to all the nii volumes and saves the segmentation in the nii volumes foldes with the extension total_seg 
+
+
 import os
 import shutil
 import sys
 
 def run_totalspineseg(source_dir): 
+    ''' 
+    This function applies totalspineseg to every scans in the source_dir and saves the segmentations in the source_dir.
+
+    Parameters: 
+    source_dir: folder to find the nii volumes organised acording to BIDS. 
+    '''
+
     # Define temporary directories
     tss_temp_dir = "data"
     output_temp = "output_data"
@@ -29,6 +42,10 @@ def run_totalspineseg(source_dir):
     shutil.rmtree(output_temp)
 
 def segmentations_into_anat(output_folder, nii_folder):
+    '''
+    Need to send the segmentations in the folder with the nii volumes. 
+    '''
+    
     # List of every segmentation file
     seg_folder = os.path.join(output_folder,"step1_output")
     segmentations = os.listdir(seg_folder)
@@ -43,7 +60,6 @@ def segmentations_into_anat(output_folder, nii_folder):
 
         # Check if 'anat' folder exists, else raise an alert
         if os.path.exists(patient_folder):
-            print(patient_folder)
             # Source and destination paths
             source_path = os.path.join(seg_folder, segmentation)
             

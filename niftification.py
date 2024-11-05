@@ -10,6 +10,8 @@ import glob
 import shutil
 import nibabel as nib
 import numpy as np
+import sys
+
 
 
 # use a subprocess to convert the dicom images to nifti format, requires the output path
@@ -34,7 +36,8 @@ def convert_dicom_to_nifti(subject_id, series_uid, input_path, output_path):
         subprocess.run(dcm2niix_command, shell=True, check=True)
         
     except subprocess.CalledProcessError as e:
-        None
+        print(f"Error converting {input_file}: {e}")
+        return None
 
 
 # do not apply this function to the axial acquisitions, as it will merge different acquisitions with different orientations
@@ -56,14 +59,14 @@ def merge_nifti_volumes(output_path, subject_id, series_uid):
     filenames.sort()
     new_paths = []
     if len(filenames) > 1:
-        for filename in filenames : 
+        for filename in filenames: 
             merged_filename = f"sub-{subject_id}_run-{series_uid}_{filename[-14:]}"
-            merged_path = os.path.join(output_path, merged_filename)
+            merged_path = os.path.join(output_folder, merged_filename)  # Changed to output_folder
             os.rename(filename, merged_path)
             new_paths.append(merged_path)
     elif len(filenames) == 1:
         merged_filename = f"sub-{subject_id}_run-{series_uid}.nii.gz"
-        merged_path = os.path.join(output_path, merged_filename)
+        merged_path = os.path.join(output_folder, merged_filename)  # Changed to output_folder
         os.rename(filenames[0], merged_path)
         new_paths.append(merged_path)
     return new_paths
@@ -89,12 +92,11 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
     ptobj = meta_obj[str(filtered_series['study_id'])]
 
     if ptobj is None:
-        
         return
 
     # create output directories if not existing
-    os.makedirs(os.path.join('bids-rsna-lscd', f'sub-{subject_id}'), exist_ok=True)
-    os.makedirs(os.path.join('bids-rsna-lscd', f'sub-{subject_id}', 'anat'), exist_ok=True)
+    os.makedirs(os.path.join(output_folder, f'sub-{subject_id}'), exist_ok=True)
+    os.makedirs(os.path.join(output_folder, f'sub-{subject_id}', 'anat'), exist_ok=True)
 
     # process through each acquisition of the subject    
     for idx, series_uid in enumerate(ptobj['SeriesInstanceUIDs']):
@@ -114,7 +116,7 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
         else:
             continue
 
-        corrected_nifti_path = f"bids-rsna-lscd/sub-{subject_id}/anat/sub-{subject_id}_acq-{acq}_rec{series_uid}_{modality}"
+        corrected_nifti_path = os.path.join(output_folder, f"sub-{subject_id}/anat/sub-{subject_id}_acq-{acq}_rec{series_uid}_{modality}")
         if len(new_paths) > 1 : 
             for merged_nifti_path in new_paths : 
                 anat_img = nib.load(merged_nifti_path)
@@ -128,7 +130,7 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
 
                 base, ext = os.path.splitext(merged_nifti_path)
 
-                new_path = corrected_nifti_path+ base[-11:] + ext
+                new_path = corrected_nifti_path + base[-11:] + ext
 
                 nib.save(nib.Nifti1Image(anat_data, new_affine, header=anat_header), new_path)
 
@@ -146,4 +148,21 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
 
                 nib.save(nib.Nifti1Image(anat_data, new_affine, header=anat_header), corrected_nifti_path + '.nii.gz')
 
-                    
+# You can add the main function to run the processing
+def main():
+    # Check if input folder is provided
+    if len(sys.argv) != 2:
+        print("Usage: python niftification.py [input_folder]")
+        sys.exit(1)
+
+    input_folder = sys.argv[1]
+    output_folder = f"{input_folder}_nii"
+    os.makedirs(output_folder, exist_ok=True)
+
+    ### Need to create the dictionnary based on the csv file ### 
+
+    for subject_id in subject_ids:  # Define subject_ids appropriately
+        process_subject(subject_id, input_folder, output_folder, train, meta_obj)
+
+if __name__ == "__main__":
+    main()
