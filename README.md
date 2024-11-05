@@ -2,6 +2,14 @@
 
 This branch defines a **3 step preprocessing** pipeline used to preprocess data from this Kaggle [Challenge](https://www.kaggle.com/code/abhinavsuri/anatomy-image-visualization-overview-rsna-raids)
 
+# Requirements 
+
+To be able to run all the code you need to have installed totalspineseg from [this](https://github.com/neuropoly/totalspineseg) repo. To do so you can simply do: 
+```bash
+git clone https://github.com/neuropoly/totalspineseg.git
+python3 -m pip install -e totalspineseg
+```
+
 We begin with __data in DICOM format__, with various acquisitions (T2w axial and sagittal and T1w sagittal) for different subjects : almost 2000 for the training. 
 We aim to first convert this data in a __NIfTI format__, and then rearrange the images in the __BIDS convention__, this is **step one** : **niftification.py**
 
