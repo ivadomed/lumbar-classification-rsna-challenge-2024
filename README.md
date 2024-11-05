@@ -8,6 +8,8 @@ To be able to run all the code you need to have installed totalspineseg from [th
 ```bash
 git clone https://github.com/neuropoly/totalspineseg.git
 python3 -m pip install -e totalspineseg
+export TOTALSPINESEG="$(realpath totalspineseg)"
+export TOTALSPINESEG_DATA="$(realpath data)"
 ```
 
 We begin with __data in DICOM format__, with various acquisitions (T2w axial and sagittal and T1w sagittal) for different subjects : almost 2000 for the training. 
