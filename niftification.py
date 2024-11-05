@@ -68,11 +68,6 @@ def merge_nifti_volumes(output_path, subject_id, series_uid):
         new_paths.append(merged_path)
     return new_paths
 
-
-# create the directories if they do not exist
-def make_dirs_if_not_exists(dir_path):
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
         
 
 # global function that process one subject creating nifti volumes in the bids format
@@ -98,8 +93,8 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
         return
 
     # create output directories if not existing
-    make_dirs_if_not_exists(os.path.join('bids-rsna-lscd', f'sub-{subject_id}'))
-    make_dirs_if_not_exists(os.path.join('bids-rsna-lscd', f'sub-{subject_id}', 'anat'))
+    os.makedirs(os.path.join('bids-rsna-lscd', f'sub-{subject_id}'), exist_ok=True)
+    os.makedirs(os.path.join('bids-rsna-lscd', f'sub-{subject_id}', 'anat'), exist_ok=True)
 
     # process through each acquisition of the subject    
     for idx, series_uid in enumerate(ptobj['SeriesInstanceUIDs']):
