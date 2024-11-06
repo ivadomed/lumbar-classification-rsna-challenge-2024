@@ -6,8 +6,10 @@ import shutil
 import nibabel as nib
 import numpy as np
 import sys
+import torchio as tio
 import pandas as pd
 from tqdm import tqdm
+from image import Image
 
 # use a subprocess to convert the dicom images to nifti format, requires the output path
 def convert_dicom_to_nifti(subject_id, series_uid, input_path, output_path):
@@ -63,6 +65,60 @@ def merge_nifti_volumes(output_path, subject_id, series_uid):
         os.rename(filenames[0], merged_path)
         new_paths.append(merged_path)
     return new_paths
+
+# reorientation of the images
+def reorient(image):
+    # Load the image using the custom Image class
+    image_instance = Image(param=image.get_fdata(), hdr=image.header)
+    image_instance.affine = image.affine  # Copier l'affine
+
+    # Specify the desired orientation (for example, 'RPI' for Right-Posterior-Inferior)
+    new_orientation = "LAS"
+
+    # Change the orientation of the image
+    image_instance.change_orientation(new_orientation)
+
+    # return the oriented image
+    return nib.Nifti1Image(image_instance.data, image_instance.affine, image_instance.header)
+
+
+# function added to resample the data to the median values of each image type
+def resample(
+        image,
+        mm = (1.0, 1.0, 1.0),
+    ):
+    '''
+    Resample the image to the target voxel size in mm.
+
+    Parameters
+    ----------
+    image : nibabel.Nifti1Image
+        The input image to resample.
+    mm : tuple[float, float, float]
+        The target voxel size in mm.
+
+    Returns
+    -------
+    nibabel.Nifti1Image
+        The resampled image.
+    '''
+    image_data = np.asanyarray(image.dataobj).astype(np.float64)
+
+    # Create result
+    subject = tio.Resample(mm)(tio.Subject(
+        image=tio.ScalarImage(tensor=image_data[None, ...], affine=image.affine),
+    ))
+    output_image_data = subject.image.data.numpy()[0, ...].astype(np.float64)
+
+    output_image = nib.Nifti1Image(output_image_data, subject.image.affine, image.header)
+    # Set qform twice to ensure consistent header information
+    # This addresses an issue where the second call to set_qform may alter output_image.header['pixdim']
+    # Applying it here prevents inconsistencies that could arise from later image edits
+    output_image.set_qform(output_image.affine)
+    output_image.set_qform(output_image.affine)
+
+    return output_image
+
 
 # global function that processes one subject creating nifti volumes in the bids format
 def process_subject(subject_id, input_path, output_path, train, meta_obj):
@@ -123,7 +179,17 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
 
                 new_path = corrected_nifti_path + base[-11:] + ext
 
-                nib.save(nib.Nifti1Image(anat_data, new_affine, header=anat_header), new_path)
+                # reorient the image
+                image = nib.Nifti1Image(anat_data, new_affine, header=anat_header)
+                oriented_image = reorient(image)
+
+                # then apply the resampling to the median values resolution for axial T2w images
+                if acq == 'ax': 
+                    resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
+
+                    nib.save(resampled_image, new_path)
+                else:
+                    nib.save(oriented_image, new_path)
 
         else : 
             for merged_nifti_path in new_paths : 
@@ -136,7 +202,17 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 anat_header.set_qform(new_affine, code=1)
                 anat_header.set_sform(new_affine, code=1)
 
-                nib.save(nib.Nifti1Image(anat_data, new_affine, header=anat_header), corrected_nifti_path + '.nii.gz')
+                # reorient the image
+                image = nib.Nifti1Image(anat_data, new_affine, header=anat_header)
+                oriented_image = reorient(image)
+
+                # then apply the resampling to the median values resolution for axial T2w images
+                if acq == 'ax': 
+                    resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
+
+                    nib.save(resampled_image, corrected_nifti_path + '.nii.gz')
+                else:
+                    nib.save(oriented_image, corrected_nifti_path + '.nii.gz')
 
 # Main function to run the processing
 def main():
@@ -166,7 +242,7 @@ def main():
                 for p in p1 }
 
     for m in meta_obj:
-        meta_obj[m]['SeriesInstanceUIDs'] = list(
+        meta_obj[m]['SeriesInstanceUIDs'] = list( 
             filter(lambda x: x.find('.DS') == -1, 
                 os.listdir(meta_obj[m]['folder_path'])
                 )
