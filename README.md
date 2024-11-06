@@ -40,4 +40,9 @@ Finally , we __registrate__ the sagittal segmentation into the axial spaces, to 
 
 Then we will be able to train and apply the classifying heads from the other branches. 
 
+We aim to finally obtain the final following patches classifying the three different pathologies :
+    - __T1w and T2w sagittal patches for both right and left NFN__
+    - __T2w axial patches for right and left SS__
+    - __T2w axial patches for SCS__
+
 Files can contain commented lines of code for importations on kaggle notebooks at their beginning. You will need to run those to replicate the preprocesing in a kaggle notebook. 
