@@ -13,7 +13,7 @@ from pathlib import Path
 import torchio as tio
 
 def process_directory_other(main_dir):
-     '''
+    '''
     Transform the segmentations in main_dir folder to the image space to have the same origin, spacing, direction and shape as the image.
 
     Parameters

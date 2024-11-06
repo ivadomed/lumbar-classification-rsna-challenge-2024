@@ -1,3 +1,6 @@
+import os
+import sys
+
 def main():
     # Ensure a directory argument is passed
     if len(sys.argv) != 3:
