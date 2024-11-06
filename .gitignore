@@ -4,3 +4,6 @@
 /nii_folder
 /output_data
 /nii_folder_patches
+/dcom_data
+/nii_data
+train_series_descriptions.csv

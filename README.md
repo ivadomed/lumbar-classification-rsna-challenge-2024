@@ -4,13 +4,32 @@ This branch defines a **3 step preprocessing** pipeline used to preprocess data 
 
 # Requirements 
 
-To be able to run all the code you need to have installed totalspineseg from [this](https://github.com/neuropoly/totalspineseg) repo. To do so you can simply do: 
+First create a virtual environment and activate it: 
+```bash 
+python -m venv .env 
+source .env/bin/activate
+```
+
+Then install the recquired libraries: 
+```bash
+pip install -r requirements.txt
+```
+
+Then to be able to run all the code you need to have installed totalspineseg from [this](https://github.com/neuropoly/totalspineseg) repo. To do so you can simply do: 
 ```bash
 git clone https://github.com/neuropoly/totalspineseg.git
 python3 -m pip install -e totalspineseg
-export TOTALSPINESEG="$(realpath totalspineseg)"
-export TOTALSPINESEG_DATA="$(realpath data)"
 ```
+
+# Running the code
+
+# Warning to avoid any bug be sure to not name your input_folder/output_folder data. First it's not explicit enough and it can lead to bug with totalspineseg. 
+
+To run the preprocessing without going into detail you can symply run: 
+```bash 
+python preprocessing.py [input_folder] [output_folder] [data_description.csv]
+```
+
 
 We begin with __data in DICOM format__, with various acquisitions (T2w axial and sagittal and T1w sagittal) for different subjects : almost 2000 for the training. 
 We aim to first convert this data in a __NIfTI format__, and then rearrange the images in the __BIDS convention__, this is **step one** : **niftification.py**

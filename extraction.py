@@ -286,13 +286,13 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
 
 def main():
     # Ensure a directory argument is passed
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 2:
         print("Usage: python extraction.py [data_directory]")
         sys.exit(1)
     
     # Get the root directory from the command-line argument
     root_dir = sys.argv[1]
-    output_dir = sys.argv[2]
+    output_dir = sys.argv[1]
     
     
     

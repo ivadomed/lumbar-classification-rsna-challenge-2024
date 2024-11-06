@@ -18,7 +18,7 @@ def run_totalspineseg(source_dir):
 
     # Define temporary directories
     tss_temp_dir = "data"
-    output_temp = "output_data"
+    output_temp = "temp_output_data"
     os.makedirs(tss_temp_dir, exist_ok=True)
     os.makedirs(output_temp, exist_ok=True)
     
@@ -79,6 +79,9 @@ def main():
     
     # Get the data directory from the command-line argument
     data_directory = sys.argv[1]
+    
+    os.system('export TOTALSPINESEG="$(realpath totalspineseg)"')
+    os.system('export TOTALSPINESEG_DATA="$(realpath data)"')
     
     # Run TotalSpineSeg processing
     run_totalspineseg(data_directory)

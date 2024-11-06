@@ -141,18 +141,18 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
 # Main function to run the processing
 def main():
     # Check if everything is provided
-    if len(sys.argv) != 3:
-        print("Usage: python niftification.py [input_folder] [csv_description]")
+    if len(sys.argv) != 4:
+        print("Usage: python niftification.py [input_folder] [output_folder] [csv_description]")
         sys.exit(1)
 
     input_folder = sys.argv[1]
-    csv_description = sys.argv[2]
-    output_folder = f"{input_folder}_nii"
+    output_folder = sys.argv[2]
+    csv_description = sys.argv[3]
+    
     os.makedirs(output_folder, exist_ok=True)
 
     ### Create the dictionary based on the CSV file ###
-    df_meta_f = pd.read_csv(csv_description)
-
+    df_meta_f = pd.read_csv(csv_description, sep=';')
     subject_ids = np.unique(df_meta_f["study_id"].values)
 
     # List out all of the Studies we have on patients.
@@ -193,6 +193,21 @@ def main():
 
         # Process subject and set up directories
         process_subject(subject_id, input_folder, output_folder, df_meta_f, meta_obj)
+
+    for item in os.listdir(output_folder):
+        item_path = os.path.join(output_folder, item)
+        
+        # Check if the item is a directory and starts with "sub"
+        if os.path.isdir(item_path) and item.startswith("sub"):
+            continue  # Skip deletion for folders starting with "sub"
+        
+        # Delete the item (file or directory)
+        if os.path.isfile(item_path):
+            os.remove(item_path)
+            print(f"Deleted file: {item_path}")
+        elif os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+            print(f"Deleted folder: {item_path}")
 
 if __name__ == "__main__":
     main()
