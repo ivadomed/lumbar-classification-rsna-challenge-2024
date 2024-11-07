@@ -299,7 +299,7 @@ def extract_patches_from_discs(nii_folder, output_folder):
     extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder)
 
 
-def patch_extraction(vol, mask, d=0, h=40, w=3):
+def patch_extraction(vol, mask, d=0, h=10, w=3):
     """
     Extracts a region of interest (ROI) from a volume based on a segmentation mask.
 
@@ -316,7 +316,7 @@ def patch_extraction(vol, mask, d=0, h=40, w=3):
         d_max, h_max, w_max = nonzero_indices.max(0)[0]  # Maximum indices
         
         patch = vol[max(0, d_min - d):min(D, d_max + d),
-                    max(0, h_min - h):min(H, h_max + h),
+                    max(0, h_min - h -50):min(H, h_max + h - 30),
                     max(0, w_min - w):min(W, w_max + w)]
        
         return patch
