@@ -201,14 +201,14 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 oriented_image = reorient(image)
                 # then apply the resampling to the median values resolution for axial T2w images
                 if acq == 'ax': 
-                    oriented_image = reorient(image)
-                    #resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
-                    resampled_image = resample(image, mm=(0.5, 0.5, 4.5))
-                    #nib.save(resampled_image, new_path)
+                    
+                    resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
+                    
+                    
                     nib.save(resampled_image, new_path)
                 else:
                     nib.save(oriented_image, new_path)
-                    #nib.save(image, new_path)
+                    
 
         else : 
             for merged_nifti_path in new_paths : 
@@ -228,8 +228,8 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 # then apply the resampling to the median values resolution for axial T2w images
                 if acq == 'ax': 
                     
-                    #resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
-                    resampled_image = resample(image, mm=(0.5, 0.5, 4.5))
+                    resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
+                    
                     
                     nib.save(resampled_image, new_path)
                 else:
