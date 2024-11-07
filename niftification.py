@@ -249,7 +249,7 @@ def main():
     os.makedirs(output_folder, exist_ok=True)
 
     ### Create the dictionary based on the CSV file ###
-    df_meta_f = pd.read_csv(csv_description, sep=';')
+    df_meta_f = pd.read_csv(csv_description, sep=',')
     subject_ids = np.unique(df_meta_f["study_id"].values)
 
     # List out all of the Studies we have on patients.
@@ -281,15 +281,20 @@ def main():
                 None
 
     # Process subjects and set up directories
+    
     for subject_id in tqdm(subject_ids):  # Adjust range as needed: 1975 subjects
-        subject_id = str(subject_id)
-        
-        # Create specific directories
-        os.makedirs(os.path.join(output_folder, f'sub-{subject_id}'), exist_ok=True)
-        os.makedirs(os.path.join(output_folder, f'sub-{subject_id}', 'anat'), exist_ok=True)
+        try: 
+            subject_id = str(subject_id)
+            
+            # Create specific directories
+            os.makedirs(os.path.join(output_folder, f'sub-{subject_id}'), exist_ok=True)
+            os.makedirs(os.path.join(output_folder, f'sub-{subject_id}', 'anat'), exist_ok=True)
 
-        # Process subject and set up directories
-        process_subject(subject_id, input_folder, output_folder, df_meta_f, meta_obj)
+            # Process subject and set up directories
+            process_subject(subject_id, input_folder, output_folder, df_meta_f, meta_obj)
+        except: 
+            print(f'failed preprocessing for {subject_id}')
+ 
 
     for item in os.listdir(output_folder):
         item_path = os.path.join(output_folder, item)
