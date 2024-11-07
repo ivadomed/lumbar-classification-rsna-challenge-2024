@@ -128,34 +128,85 @@ def transform_seg2image(
 
     return output_seg
 
-
-
-
-def extract_patches_from_discs(nii_folder, output_folder):
+# patch extraction for the NFN
+def patch_extraction_foraminal(vol, mask, d=10, h=20, w=20):
     """
-    Traverses a folder containing MRIs and associated sagittal segmentations.
-    For each axial image and associated sagittal segmentation, extracts patches for discs with labels 206 to 202.
-    Saves each patch in the corresponding folder structure within output_folder.
-
-    nii_folder : path to the folder containing MRIs and segmentations
-    output_folder : path to the folder where patches will be saved
+    Extract a ROI from a volume with a given segmentation mask.
+    vol : array of shape (D, H, W)
+    mask : segmentation mask of shape (D, H, W)
+    d, h, w : margin for each image axis
     """
-    axial_images = []
-    sagittal_segmentations = []
-    
-    # Traverse files in the nii_folder
-    for filename in os.listdir(nii_folder):
-        if 'acq-ax' in filename and filename.endswith('.nii.gz') and not filename.endswith('_seg.nii.gz'):          
-            axial_images.append(filename)  # Axial images
-        elif 'acq-ax' in filename and 'T2w' in filename and 'total_seg.nii.gz' in filename:
-            sagittal_segmentations.append(filename)  # Sagittal segmentations
+    D, H, W = vol.shape
+    mask = torch.Tensor(mask)
+    nonzero_indices = torch.nonzero(mask)  # Extracting non-zero indices from the first channel
+    d_min, h_min, w_min = nonzero_indices.min(0)[0]  # Minimum indices
+    d_max, h_max, w_max = nonzero_indices.max(0)[0]  # Maximum indices
+    patch1 = vol[max(0, d_min+d//2):min(D, d_min + d),
+                max(0, h_min - h):min(H, h_max + h),
+                max(0, w_min - w):min(W, w_max + w)]
+    patch2 = vol[max(0, d_max-d):min(D, d_max-d//2),
+                max(0, h_min - h):min(H, h_max + h),
+                max(0, w_min - w):min(W, w_max + w)]
+    return patch1, patch2
 
-    # Sort lists to ensure corresponding order
-    sagittal_segmentations.sort()
-    axial_images.sort()
-    
+# uses lists of sagittal images and segmentations to extract patches for each disc
+def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, nii_folder, output_folder):
     # Match each axial image to its corresponding sagittal segmentation
-    for img_name, seg_sag_name in zip(axial_images, sagittal_segmentations):
+    for img_name, seg_sag_name in zip(sagittal_images, sagittal_segmentations):
+        if "patch" not in img_name:
+            img_path = os.path.join(nii_folder, img_name)
+            seg_sag_path = os.path.join(nii_folder, seg_sag_name)
+            
+            # Load the volumetric image and sagittal segmentation
+            vol = nib.load(img_path).get_fdata()
+            seg_sag = nib.load(seg_sag_path).get_fdata()
+
+            # Détection des disques dans la segmentation sagittale
+            #The values to check are based on the classes in totalspineseg 
+            disc_l5 = np.isin(seg_sag, [100]).astype(int)
+            disc_l4 = np.isin(seg_sag, [95]).astype(int)
+            disc_l3 = np.isin(seg_sag, [94]).astype(int)
+            disc_l2 = np.isin(seg_sag, [93]).astype(int)
+            disc_l1 = np.isin(seg_sag, [92]).astype(int)
+
+            
+            discs_dict = {
+                "L1_L2": disc_l1,
+                "L2_L3": disc_l2,
+                "L3_L4": disc_l3,
+                "L4_L5": disc_l4,
+                "L5_S1": disc_l5
+            }    
+
+            # Extract and save patches for each disc
+            for disc_name, disc_mask in discs_dict.items():
+                if np.any(disc_mask):  # If the disc is found in the segmentation
+                    # Extract the patch using the segmentation mask
+                    
+                    patch_img_left, patch_img_right = patch_extraction_foraminal(vol, disc_mask, d=16, h=40, w=20)
+                    
+                    if patch_img_left is not None or patch_img_right is not None:  # Proceed only if patch extraction was successful
+
+                        # Construct the filename and file path
+                        patch_img_filename_left = f"{img_name[:-7]}_{disc_name}_foramen_left_patch.nii.gz"
+                        patch_img_filepath_left = os.path.join(output_folder, patch_img_filename_left)
+
+                        patch_img_filename_right = f"{img_name[:-7]}_{disc_name}_foramen_right_patch.nii.gz"
+                        patch_img_filepath_right = os.path.join(output_folder, patch_img_filename_right)
+
+                        # Use the affine from the original volume to create the patch NIfTI image
+                        original_affine = nib.load(img_path).affine
+                        patch_nifti_img_left = nib.Nifti1Image(patch_img_left, affine=original_affine)
+                        patch_nifti_img_right = nib.Nifti1Image(patch_img_right, affine=original_affine)
+
+                        # Save the patch to the specified location
+                        nib.save(patch_nifti_img_left, patch_img_filepath_left)
+                        nib.save(patch_nifti_img_right, patch_img_filepath_right)
+
+# uses lists of axial images and segmentations to extract patches for each disc
+def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder):
+    # Match each axial image to its corresponding sagittal segmentation
+    for img_name, seg_sag_name in zip(axial_images, axial_segmentations):
         if "patch" not in img_name:
             img_path = os.path.join(nii_folder, img_name)
             seg_sag_path = os.path.join(nii_folder, seg_sag_name)
@@ -181,8 +232,6 @@ def extract_patches_from_discs(nii_folder, output_folder):
                 "L5_S1": disc_l5
             }
 
-            
-
             # Extract and save patches for each disc
             for disc_name, disc_mask in discs_dict.items():
                 if np.any(disc_mask):  # If the disc is found in the segmentation
@@ -202,7 +251,53 @@ def extract_patches_from_discs(nii_folder, output_folder):
 
                         # Save the patch to the specified location
                         nib.save(patch_nifti_img, patch_img_filepath)
-                        
+
+# extract patches from the discs in the nii folder, for axial and sagittal patches
+def extract_patches_from_discs(nii_folder, output_folder):
+    """
+    Traverses a folder containing MRIs and associated sagittal segmentations.
+    For each axial image and associated sagittal segmentation, extracts patches for discs with labels 206 to 202.
+    Saves each patch in the corresponding folder structure within output_folder.
+
+    nii_folder : path to the folder containing MRIs and segmentations
+    output_folder : path to the folder where patches will be saved
+    """
+    axial_images = []
+    axial_segmentations = []
+    sagittal_T2_segmentations = []
+    sagittal_T1_segmentations = []
+    saggital_T1_images = []
+    sagittal_T2_images = []
+
+    
+    # Traverse files in the nii_folder
+    for filename in os.listdir(nii_folder):
+        if 'acq-ax' in filename and filename.endswith('.nii.gz') and not filename.endswith('_seg.nii.gz'):          
+            axial_images.append(filename)  # Axial images
+        elif 'acq-ax' in filename and 'T2w' in filename and 'total_seg.nii.gz' in filename:
+            axial_segmentations.append(filename)  # Sagittal segmentations
+        elif 'acq-sag' in filename and 'T2w' in filename and 'total_seg.nii.gz' in filename:
+            sagittal_T2_segmentations.append(filename)
+        elif 'acq-sag' in filename and 'T1w' in filename and 'total_seg.nii.gz' in filename:
+            sagittal_T1_segmentations.append(filename)
+        elif 'acq-sag' in filename and 'T2' and filename.endswith('.nii.gz') and not filename.endswith('_seg.nii.gz'):          
+            sagittal_T2_images.append(filename)
+        elif 'acq-sag' in filename and 'T1' and filename.endswith('.nii.gz') and not filename.endswith('_seg.nii.gz'):          
+            saggital_T1_images.append(filename)
+
+    # Sort lists to ensure corresponding order
+    axial_segmentations.sort()
+    axial_images.sort()
+    sagittal_T2_segmentations.sort()
+    sagittal_T2_images.sort()
+    sagittal_T1_segmentations.sort()
+    saggital_T1_images.sort()
+    sagittal_T2_segmentations.sort()
+    
+    extract_and_save_sagittal_patches(sagittal_T2_images, sagittal_T2_segmentations, nii_folder, output_folder)
+    extract_and_save_sagittal_patches(saggital_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)
+    extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder)
+
 
 def patch_extraction(vol, mask, d=0, h=40, w=3):
     """

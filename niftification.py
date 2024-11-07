@@ -202,9 +202,7 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 # then apply the resampling to the median values resolution for axial T2w images
                 if acq == 'ax': 
                     
-                    resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
-                    
-                    
+                    resampled_image = resample(oriented_image, mm=(0.4, 0.4, 3.5))
                     nib.save(resampled_image, new_path)
                 else:
                     resampled_image = resample(oriented_image, mm=(1.0, 1.0, 1.0))
