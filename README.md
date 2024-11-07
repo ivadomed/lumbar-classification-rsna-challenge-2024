@@ -27,6 +27,8 @@ python3 -m pip install -e totalspineseg
 
 To run the preprocessing without going into detail you can symply run: 
 ```bash 
+export TOTALSPINESEG="$(realpath totalspineseg)"
+export TOTALSPINESEG_DATA="$(realpath data)"
 python preprocessing.py [input_folder] [output_folder] [data_description.csv]
 ```
 
