@@ -72,6 +72,7 @@ def reorient(image):
     image_instance = Image(param=image.get_fdata(), hdr=image.header)
     image_instance.affine = image.affine  # Copier l'affine
 
+   
     # Specify the desired orientation (for example, 'RPI' for Right-Posterior-Inferior)
     new_orientation = "LAS"
 
@@ -181,15 +182,18 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
 
                 # reorient the image
                 image = nib.Nifti1Image(anat_data, new_affine, header=anat_header)
+                
                 oriented_image = reorient(image)
-
                 # then apply the resampling to the median values resolution for axial T2w images
                 if acq == 'ax': 
-                    resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
-
+                    oriented_image = reorient(image)
+                    #resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
+                    resampled_image = resample(image, mm=(0.5, 0.5, 4.5))
+                    #nib.save(resampled_image, new_path)
                     nib.save(resampled_image, new_path)
                 else:
                     nib.save(oriented_image, new_path)
+                    #nib.save(image, new_path)
 
         else : 
             for merged_nifti_path in new_paths : 
@@ -201,18 +205,21 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 new_affine = np.copy(anat_affine)
                 anat_header.set_qform(new_affine, code=1)
                 anat_header.set_sform(new_affine, code=1)
-
+                new_path = corrected_nifti_path + '.nii.gz'
                 # reorient the image
                 image = nib.Nifti1Image(anat_data, new_affine, header=anat_header)
                 oriented_image = reorient(image)
 
                 # then apply the resampling to the median values resolution for axial T2w images
                 if acq == 'ax': 
-                    resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
-
-                    nib.save(resampled_image, corrected_nifti_path + '.nii.gz')
+                    
+                    #resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
+                    resampled_image = resample(image, mm=(0.5, 0.5, 4.5))
+                    
+                    nib.save(resampled_image, new_path)
                 else:
-                    nib.save(oriented_image, corrected_nifti_path + '.nii.gz')
+                    
+                    nib.save(oriented_image, new_path)
 
 # Main function to run the processing
 def main():

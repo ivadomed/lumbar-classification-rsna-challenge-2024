@@ -17,10 +17,9 @@ def run_totalspineseg(source_dir):
     '''
 
     # Define temporary directories
+    
     tss_temp_dir = "data"
     output_temp = "temp_output_data"
-    os.makedirs(tss_temp_dir, exist_ok=True)
-    os.makedirs(output_temp, exist_ok=True)
     
     # Copy all the nii volumes in a shared folder to optimize the inference of TotalSpineSeg
     for subdir in os.listdir(source_dir):
@@ -79,6 +78,11 @@ def main():
     
     # Get the data directory from the command-line argument
     data_directory = sys.argv[1]
+
+    tss_temp_dir = "data"
+    output_temp = "temp_output_data"
+    os.makedirs(tss_temp_dir, exist_ok=True)
+    os.makedirs(output_temp, exist_ok=True)
     
     os.system('export TOTALSPINESEG="$(realpath totalspineseg)"')
     os.system('export TOTALSPINESEG_DATA="$(realpath data)"')

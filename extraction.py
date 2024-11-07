@@ -129,6 +129,8 @@ def transform_seg2image(
     return output_seg
 
 
+
+
 def extract_patches_from_discs(nii_folder, output_folder):
     """
     Traverses a folder containing MRIs and associated sagittal segmentations.
