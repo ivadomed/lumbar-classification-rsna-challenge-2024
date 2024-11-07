@@ -207,7 +207,8 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                     
                     nib.save(resampled_image, new_path)
                 else:
-                    nib.save(oriented_image, new_path)
+                    resampled_image = resample(oriented_image, mm=(1.0, 1.0, 1.0))
+                    nib.save(resampled_image, new_path)
                     
 
         else : 
@@ -233,8 +234,8 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                     
                     nib.save(resampled_image, new_path)
                 else:
-                    
-                    nib.save(oriented_image, new_path)
+                    resampled_image = resample(oriented_image, mm=(1.0, 1.0, 1.0))
+                    nib.save(resampled_image, new_path)
 
 # Main function to run the processing
 def main():
