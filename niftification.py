@@ -66,21 +66,36 @@ def merge_nifti_volumes(output_path, subject_id, series_uid):
         new_paths.append(merged_path)
     return new_paths
 
-# reorientation of the images
+# reorient the image to a common orientation "LPI"
 def reorient(image):
-    # Load the image using the custom Image class
-    image_instance = Image(param=image.get_fdata(), hdr=image.header)
-    image_instance.affine = image.affine  # Copier l'affine
 
-   
-    # Specify the desired orientation (for example, 'RPI' for Right-Posterior-Inferior)
-    new_orientation = "LAS"
+    # Get image dtype from the image data (preferred over header dtype to avoid data loss)
+    image_data_dtype = getattr(np, np.asanyarray(image.dataobj).dtype.name)
 
-    # Change the orientation of the image
-    image_instance.change_orientation(new_orientation)
+    # Rescale the image to the output dtype range if necessary
+    # Modified from https://github.com/spinalcordtoolbox/spinalcordtoolbox/blob/6.3/spinalcordtoolbox/image.py#L1217
+    if "int" in np.dtype(image_data_dtype).name:
+        image_data = np.asanyarray(image.dataobj).astype(np.float64)
+        image_min, image_max = image_data.min(), image_data.max()
+        dtype_min, dtype_max = np.iinfo(image_data_dtype).min, np.iinfo(image_data_dtype).max
+        if (image_min < dtype_min) or (dtype_max < image_max):
+            data_rescaled = image_data * (dtype_max - dtype_min) / (image_max - image_min)
+            image_data = data_rescaled - (data_rescaled.min() - dtype_min)
+            image = nib.Nifti1Image(image_data.astype(image_data_dtype), image.affine, image.header)
 
-    # return the oriented image
-    return nib.Nifti1Image(image_instance.data, image_instance.affine, image_instance.header)
+    # Transform the image to the closest canonical orientation
+    output_image = nib.as_closest_canonical(image)
+
+    # Ensure correct image dtype, affine and header
+    output_image = nib.Nifti1Image(
+        np.asanyarray(output_image.dataobj).astype(image_data_dtype),
+        output_image.affine, output_image.header
+    )
+    output_image.set_data_dtype(image_data_dtype)
+    output_image.set_qform(output_image.affine)
+    output_image.set_sform(output_image.affine)
+
+    return output_image
 
 
 # function added to resample the data to the median values of each image type
