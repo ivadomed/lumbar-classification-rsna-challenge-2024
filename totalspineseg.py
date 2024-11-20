@@ -1,96 +1,87 @@
-## STEP 2 ##
-
-# Second part of the preprocessing pipeline
-# Applies totalspineseg to all the nii volumes and saves the segmentation in the nii volumes foldes with the extension total_seg 
-
-
 import os
 import shutil
 import sys
+import csv
 
-def run_totalspineseg(source_dir): 
-    ''' 
-    This function applies totalspineseg to every scans in the source_dir and saves the segmentations in the source_dir.
 
-    Parameters: 
-    source_dir: folder to find the nii volumes organised acording to BIDS. 
-    '''
+def get_batches(source_dir, batch_size=50):
+    """Get a list of batches of subjects filtered by the filter_func."""
+    all_subjects = [sub for sub in os.listdir(source_dir)]
+    return [all_subjects[i:i + batch_size] for i in range(0, len(all_subjects), batch_size)]
 
+
+def run_totalspineseg(source_dir):
+    """Applies TotalSpineSeg to every scan in the source_dir and saves the segmentations."""
     # Define temporary directories
-    
     tss_temp_dir = "data"
     output_temp = "temp_output_data"
-    
-    # Copy all the nii volumes in a shared folder to optimize the inference of TotalSpineSeg
-    for subdir in os.listdir(source_dir):
-        anat_path = os.path.join(source_dir, subdir, 'anat')
-        if os.path.exists(anat_path):  
-            for file in os.listdir(anat_path):
-                file_path = os.path.join(anat_path, file)
-                if os.path.isfile(file_path) and 'ax' not in file_path and 'total_seg' not in file_path:
-                    shutil.copy(file_path, tss_temp_dir)
-    
-    # Run TotalSpineSeg segmentation
-    os.system(f'totalspineseg {tss_temp_dir} {output_temp} --step1')
+    failed_subjects = []
 
-    # Move segmentations back into original data structure
-    segmentations_into_anat(output_temp, source_dir)
+    # Get all batches of subjects
+    batches = get_batches(source_dir, batch_size=50)
 
-    # Clean up temporary directories
-    shutil.rmtree(tss_temp_dir)
-    shutil.rmtree(output_temp)
+    # Process each batch
+    for i, batch in enumerate(batches):
+        os.makedirs(tss_temp_dir, exist_ok=True)
+        os.makedirs(output_temp, exist_ok=True)
+
+        for subdir in batch:
+            print(subdir)
+            try:
+                anat_path = os.path.join(source_dir, subdir, 'anat')
+                if os.path.exists(anat_path):
+                    for file in os.listdir(anat_path):
+                        file_path = os.path.join(anat_path, file)
+                        if os.path.isfile(file_path) and 'ax' not in file_path and 'total_seg' not in file_path:
+                            print(file_path)
+                            shutil.copy(file_path, tss_temp_dir)
+                            print('File copied successfully.')
+            except Exception as e:
+                print(f"Failed processing subject {subdir}: {e}")
+                failed_subjects.append(subdir)
+
+        # Run TotalSpineSeg segmentation
+        os.system(f'totalspineseg {tss_temp_dir} {output_temp} --step1')
+
+        # Move segmentations back into original data structure
+        segmentations_into_anat(output_temp, source_dir)
+
+        # Clean up temporary directories
+        shutil.rmtree(tss_temp_dir)
+        shutil.rmtree(output_temp)
+
+    # Save failed subjects to a CSV file
+    if failed_subjects:
+        with open("failed_subjects.csv", "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(["Subject"])
+            writer.writerows([[subject] for subject in failed_subjects])
+
 
 def segmentations_into_anat(output_folder, nii_folder):
-    '''
-    Need to send the segmentations in the folder with the nii volumes. 
-    '''
-    
-    # List of every segmentation file
-    seg_folder = os.path.join(output_folder,"step1_output")
+    """Send the segmentations into the folder with the nii volumes."""
+    seg_folder = os.path.join(output_folder, "step1_output")
     segmentations = os.listdir(seg_folder)
 
-    # Loop over each segmentation file
     for segmentation in segmentations:
-        # Extract patient ID (everything before the first "_")
         id_patient = segmentation.split('_')[0]
-
-        # Path to the patient's 'anat' folder
         patient_folder = os.path.join(nii_folder, id_patient, 'anat')
 
-        # Check if 'anat' folder exists, else raise an alert
         if os.path.exists(patient_folder):
-            # Source and destination paths
             source_path = os.path.join(seg_folder, segmentation)
-            
-            # Replace ".nii.gz" suffix with "_total_seg.nii.gz"
             modified_segmentation = segmentation.replace('.nii.gz', '_total_seg.nii.gz')
-
             destination_path = os.path.join(patient_folder, modified_segmentation)
-
-            # Copy the segmentation to the correct folder
             shutil.copy(source_path, destination_path)
-            
-def main():
-    # Ensure a directory argument is passed
-    if len(sys.argv) != 2:
-        print("Usage: python totalspineg.py [data_directory]")
-        sys.exit(1)
-    
-    # Get the data directory from the command-line argument
-    data_directory = sys.argv[1]
 
-    tss_temp_dir = "data"
-    output_temp = "temp_output_data"
-    os.makedirs(tss_temp_dir, exist_ok=True)
-    os.makedirs(output_temp, exist_ok=True)
-    
-    os.system('export TOTALSPINESEG="$(realpath totalspineseg)"')
-    os.system('export TOTALSPINESEG_DATA="$(realpath data)"')
-    
-    # Run TotalSpineSeg processing
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python totalspineseg.py [data_directory]")
+        sys.exit(1)
+
+    data_directory = sys.argv[1]
     run_totalspineseg(data_directory)
+
 
 if __name__ == "__main__":
     main()
-
-
