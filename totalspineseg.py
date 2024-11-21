@@ -50,13 +50,6 @@ def run_totalspineseg(source_dir):
         shutil.rmtree(tss_temp_dir)
         shutil.rmtree(output_temp)
 
-    # Save failed subjects to a CSV file
-    if failed_subjects:
-        with open("failed_subjects.csv", "w", newline="") as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(["Subject"])
-            writer.writerows([[subject] for subject in failed_subjects])
-
 
 def segmentations_into_anat(output_folder, nii_folder):
     """Send the segmentations into the folder with the nii volumes."""
