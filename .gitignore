@@ -1,2 +1,6 @@
-totalspineseg
+totalspineseg/
 __pycache__
+output.csv
+dataset_split.csv
+model*
+*.png
