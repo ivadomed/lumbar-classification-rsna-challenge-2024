@@ -59,11 +59,11 @@ def prepare_data(data_dir, csv_file, transform):
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
-                if '_patch.nii.gz' in file and 'foramen' not in file:
+                if '_patch.nii.gz' in file and 'foramen' in file and 'right' in file:
                     image_path = os.path.join(subject_dir, file)
-                    
+                    print(file)
                     parts = image_path.split('_')
-                    disk_level = f"{parts[-3]}_{parts[-2]}"
+                    disk_level = f"{parts[-5]}_{parts[-4]}"
 
                     if os.path.exists(image_path):
                         # Vérifier la forme de l'image
@@ -71,7 +71,7 @@ def prepare_data(data_dir, csv_file, transform):
                         if image_data.ndim == 3:
                             subject_id = (subject.replace('sub-', ''))
                             
-                            label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
+                            label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
                             # Obtenir l'étiquette brute
                             
                             label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
@@ -129,7 +129,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
-    model_name = f"model_layers_{layers}_epochs_{epochs}_lr_{lr}"
+    model_name = f"rnfn_model_layers_{layers}_epochs_{epochs}_lr_{lr}"
 
     # Entraînement
     for epoch in range(epochs):
@@ -163,7 +163,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
 
 
         train_losses.append(running_loss / len(train_loader))
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {correct_predictions / total_predictions}%")
 
         # Validation
         model.eval()
