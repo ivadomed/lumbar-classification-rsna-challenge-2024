@@ -1,8 +1,3 @@
-# this scripts aims to plot histograms, mean and standard deviation of the resolutions of the 3D volumes of the MRI images
-# this is done using the csv file "train_series_descriptions.csv" that contains the series descriptions of the MRI images
-# and displays 3 different plots for the axial T2, sagittal T1 and sagittal T2 resolutions
-
-
 import os
 import pandas
 import pydicom
@@ -68,9 +63,10 @@ def calculate_3d_resolutions(csv_file, global_directory):
             for i, ax in enumerate(axes_array):
                 ax.hist(resolutions[:, i], bins=20, alpha=0.7, color='blue')
                 mean_val = np.mean(resolutions[:, i])
+                median_val = np.median(resolutions[:, i])
                 std_val = np.std(resolutions[:, i])
                 ax.axvline(mean_val, color='red', linestyle='--', label=f"Mean: {mean_val:.2f}")
-                ax.text(0.95, 0.85, f"Mean: {mean_val:.2f}\nStd: {std_val:.2f}",
+                ax.text(0.95, 0.85, f"Mean: {mean_val:.2f}\nStd: {std_val:.2f}\nMedian: {median_val:.2f}",
                         transform=ax.transAxes, fontsize=10, ha='right', va='top', color='black',
                         bbox=dict(boxstyle="round", facecolor="white", alpha=0.5))
                 ax.set_title(f"{axes[i]} {title}")
@@ -88,8 +84,7 @@ def calculate_3d_resolutions(csv_file, global_directory):
     print("Histograms saved.")
 
 # Exécution du script
-'''csv_path = "train_series_descriptions.csv"
+csv_path = "train_series_descriptions.csv"
 dicom_base_dir = "train_images"
 output_plot_path = "stats"
 calculate_3d_resolutions(csv_path, dicom_base_dir)
-'''
