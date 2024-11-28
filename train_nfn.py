@@ -8,7 +8,7 @@ from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotateByDegrees
+    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -38,8 +38,8 @@ def get_transforms():
         EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
         ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
         NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-        SpatialPadd(keys=['image'], spatial_size=(100, 100, 4)),  # Padding pour atteindre une taille fixe
-        CenterSpatialCropd(keys=['image'], roi_size=(100, 100, 4)),  # Crop pour obtenir une taille fixe
+        SpatialPadd(keys=['image'], spatial_size=(8, 100, 50)),  # Padding pour atteindre une taille fixe
+        CenterSpatialCropd(keys=['image'], roi_size=(8, 100, 50)),  # Crop pour obtenir une taille fixe
         #ConcatItemsd(keys=["image", "seg"], name="combined"),  # Concatène l'image et la segmentation sur la dimension des canaux
         ToTensord(keys=['image']) 
     ])
@@ -63,7 +63,7 @@ def prepare_data(data_dir, csv_file, transform):
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
-                if '_patch.nii.gz' in file and 'foramen' in file and 'right' in file:
+                if '_patch.nii.gz' in file and 'foramen' in file:
                     image_path = os.path.join(subject_dir, file)
                     print(file)
                     parts = image_path.split('_')
@@ -74,8 +74,10 @@ def prepare_data(data_dir, csv_file, transform):
                         image_data = nib.load(image_path).get_fdata()
                         if image_data.ndim == 3:
                             subject_id = (subject.replace('sub-', ''))
-                            
-                            label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
+                            if 'left' in file:
+                                label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
+                            if 'right' in file:
+                                label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
                             # Obtenir l'étiquette brute
                             
                             label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
@@ -97,17 +99,20 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
     
 
 
-    # Split train/val sets
+    # Split train/test sets
     train_size = int((1 - val_split) * len(data))
-    val_size = len(data) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(data, [train_size, val_size])
+    test_size = len(data) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(data, [train_size, test_size])
+
+    # Split train/val sets
+    train_size = int((1 - 0.2) * len(train_dataset))
+    val_size = len(train_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size])
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
     # Définir le modèle, la loss function et l'optimiseur
     
     
@@ -130,7 +135,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
-    model_name = f"rnfn_model_layers_{layers}_epochs_{epochs}_lr_{lr}"
+    model_name = f"nfn_model_layers_{layers}_epochs_{epochs}_lr_{lr}"
 
     # Entraînement
     for epoch in range(epochs):
@@ -202,7 +207,67 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
     print("Entraînement terminé.")
 
 
+    # Évaluation sur le test set
+    model.load_state_dict(torch.load(f"{model_name}.pth"))
+    model.eval()
+    y_true = []
+    y_pred = []
+
+    total_loss = 0.0
+
+    with torch.no_grad():
+        for batch in test_loader:
+            
+            inputs = batch["image"].cuda()
+            labels = batch["label"].cuda()
+            # Prédictions du modèle
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs, 1)
+
+            # Calculer la perte sur ce batch
+            loss = criterion(outputs, labels)
+            total_loss += loss.item()
+
+            y_true.extend(labels.cpu().numpy())
+            y_pred.extend(predicted.cpu().numpy())
+
+    cm = confusion_matrix(y_true, y_pred)
     
+    # Convertir la matrice de confusion en pourcentages
+    cm_percentage = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
+
+    # Calculer la perte moyenne sur le jeu de test
+    avg_loss = total_loss / len(test_loader)
+
+    # saving a plot of the training and its results
+    plt.figure(figsize=(15, 7))
+
+    # Premier sous-graphe : Matrice de confusion avec pourcentages
+    plt.subplot(1, 2, 1)  # 1 ligne, 2 colonnes, 1er graphique
+    sns.heatmap(cm_percentage, annot=True, fmt='.2f', cmap='Blues', 
+                xticklabels=np.unique(y_true), yticklabels=np.unique(y_true))
+    # Ajouter le titre avec la loss moyenne
+    plt.title(f'Training loss and confusion matrix for level\nCrossEntropyLoss: {avg_loss:.4f}')
+    plt.xlabel('Predicted Label')
+    plt.ylabel('True Label')
+
+    # Deuxième sous-graphe : Graphique de la perte d'entraînement et validation
+    plt.subplot(1, 2, 2)  # 1 ligne, 2 colonnes, 2e graphique
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.title('Loss during Training')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # Sauvegarder la figure complète avec les deux graphiques
+    plt.tight_layout()  # Pour éviter que les graphiques se chevauchent
+    plt.savefig(f'training_loss_and_confusion_matrix_{model_name}.png')
+    plt.close()
+
+    print("Graphique de la perte et matrice de confusion sauvegardés dans un seul fichier.")
+
+
 
 # Function to parse command-line arguments
 def parse_args():

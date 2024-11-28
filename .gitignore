@@ -4,3 +4,4 @@ output.csv
 dataset_split.csv
 model*
 *.png
+*.pth

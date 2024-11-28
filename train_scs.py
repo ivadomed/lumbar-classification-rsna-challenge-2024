@@ -8,7 +8,7 @@ from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd
+    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotated
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -29,6 +29,10 @@ weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
 # transformation pipeline for the data
 def get_transforms():
+        # Define the transform pipeline with rotation augmentation
+    
+
+
     common_transforms = Compose([
         LoadImaged(keys=['image']),  # Charge l'image et la segmentation
         EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
@@ -86,27 +90,19 @@ def prepare_data(data_dir, csv_file, transform):
     print(f"Nombre de données chargées: {counter}")
     return Dataset(data=data, transform=transform)
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers=[3, 4, 6, 3]):
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3]):
     # Préparer les données
     transform=get_transforms()
     data = prepare_data(data_dir, csv_file, transform)
     
-
-
-    # Split train/test sets
-    train_size = int((1 - val_split) * len(data))
-    test_size = len(data) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(data, [train_size, test_size])
-
     # Split train/val sets
-    train_size = int((1 - 0.2) * len(train_dataset))
-    val_size = len(train_dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size])
+    train_size = int((1 - val_split) * len(data))
+    val_size = len(data) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(data, [train_size, val_size])
     
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
+    
     # Définir le modèle, la loss function et l'optimiseur
     
     
@@ -202,65 +198,12 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
 
 
     # Évaluation sur le test set
-    model.load_state_dict(torch.load(f"{model_name}.pth"))
+    model.load_state_dict(torch.load(f"{model_name}.pth", map_location=torch.device('cuda')))  # Or use 'cuda' if using GPU
     model.eval()
-    y_true = []
-    y_pred = []
-
-    total_loss = 0.0
-
-    with torch.no_grad():
-        for batch in test_loader:
-            
-            inputs = batch["image"].cuda()
-            labels = batch["label"].cuda()
-            # Prédictions du modèle
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs, 1)
-
-            # Calculer la perte sur ce batch
-            loss = criterion(outputs, labels)
-            total_loss += loss.item()
-
-            y_true.extend(labels.cpu().numpy())
-            y_pred.extend(predicted.cpu().numpy())
-
-    cm = confusion_matrix(y_true, y_pred)
     
-    # Convertir la matrice de confusion en pourcentages
-    cm_percentage = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
 
-    # Calculer la perte moyenne sur le jeu de test
-    avg_loss = total_loss / len(test_loader)
-
-    # saving a plot of the training and its results
-    plt.figure(figsize=(15, 7))
-
-    # Premier sous-graphe : Matrice de confusion avec pourcentages
-    plt.subplot(1, 2, 1)  # 1 ligne, 2 colonnes, 1er graphique
-    sns.heatmap(cm_percentage, annot=True, fmt='.2f', cmap='Blues', 
-                xticklabels=np.unique(y_true), yticklabels=np.unique(y_true))
-    # Ajouter le titre avec la loss moyenne
-    plt.title(f'Training loss and confusion matrix for level\nCrossEntropyLoss: {avg_loss:.4f}')
-    plt.xlabel('Predicted Label')
-    plt.ylabel('True Label')
-
-    # Deuxième sous-graphe : Graphique de la perte d'entraînement et validation
-    plt.subplot(1, 2, 2)  # 1 ligne, 2 colonnes, 2e graphique
-    plt.plot(train_losses, label='Train Loss')
-    plt.plot(val_losses, label='Validation Loss')
-    plt.title('Loss during Training')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-
-    # Sauvegarder la figure complète avec les deux graphiques
-    plt.tight_layout()  # Pour éviter que les graphiques se chevauchent
-    plt.savefig(f'training_loss_and_confusion_matrix_{model_name}.png')
-    plt.close()
-
-    print("Graphique de la perte et matrice de confusion sauvegardés dans un seul fichier.")
-
+    
+    
 
 
 # Function to parse command-line arguments
