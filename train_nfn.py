@@ -58,26 +58,36 @@ def prepare_data(data_dir, csv_file, transform):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
-        print(subject)
+        counter += 1
+        #if counter> 15 :
+        #    break
+     
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
                 if '_patch.nii.gz' in file and 'foramen' in file:
                     image_path = os.path.join(subject_dir, file)
-                    print(file)
+                    
                     parts = image_path.split('_')
                     disk_level = f"{parts[-5]}_{parts[-4]}"
 
                     if os.path.exists(image_path):
                         # Vérifier la forme de l'image
                         image_data = nib.load(image_path).get_fdata()
+
+                        # Print the size of the NIfTI volume
+                        print(f"Subject: {subject}, File: {file}, Image Shape: {image_data.shape}")
+                       
                         if image_data.ndim == 3:
                             subject_id = (subject.replace('sub-', ''))
                             if 'left' in file:
                                 label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
                             if 'right' in file:
                                 label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
+                                # Flip the image along the appropriate axis (e.g., flipping along x-axis)
+                                image_data = np.flip(image_data, axis=0)  # Flip along the first axis (x-axis)
+
                             # Obtenir l'étiquette brute
                             
                             label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
@@ -92,7 +102,7 @@ def prepare_data(data_dir, csv_file, transform):
     print(f"Nombre de données chargées: {counter}")
     return Dataset(data=data, transform=transform)
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers=[3, 4, 6, 3]):
+def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers= [3, 4, 6, 3]):
     # Préparer les données
     transform=get_transforms()
     data = prepare_data(data_dir, csv_file, transform)
@@ -101,18 +111,12 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
 
     # Split train/test sets
     train_size = int((1 - val_split) * len(data))
-    test_size = len(data) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(data, [train_size, test_size])
+    val_size = len(data) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(data, [train_size, val_size])
 
-    # Split train/val sets
-    train_size = int((1 - 0.2) * len(train_dataset))
-    val_size = len(train_dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size])
-    
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
+    
     # Définir le modèle, la loss function et l'optimiseur
     
     
@@ -126,7 +130,6 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
             ).cuda()
 
     
-    model = model.to(device)
     
     criterion = CrossEntropyLoss(weight=weight)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -207,49 +210,13 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
     print("Entraînement terminé.")
 
 
-    # Évaluation sur le test set
-    model.load_state_dict(torch.load(f"{model_name}.pth"))
-    model.eval()
-    y_true = []
-    y_pred = []
-
-    total_loss = 0.0
-
-    with torch.no_grad():
-        for batch in test_loader:
-            
-            inputs = batch["image"].cuda()
-            labels = batch["label"].cuda()
-            # Prédictions du modèle
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs, 1)
-
-            # Calculer la perte sur ce batch
-            loss = criterion(outputs, labels)
-            total_loss += loss.item()
-
-            y_true.extend(labels.cpu().numpy())
-            y_pred.extend(predicted.cpu().numpy())
-
-    cm = confusion_matrix(y_true, y_pred)
     
-    # Convertir la matrice de confusion en pourcentages
-    cm_percentage = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
-
-    # Calculer la perte moyenne sur le jeu de test
-    avg_loss = total_loss / len(test_loader)
+    
 
     # saving a plot of the training and its results
     plt.figure(figsize=(15, 7))
 
-    # Premier sous-graphe : Matrice de confusion avec pourcentages
-    plt.subplot(1, 2, 1)  # 1 ligne, 2 colonnes, 1er graphique
-    sns.heatmap(cm_percentage, annot=True, fmt='.2f', cmap='Blues', 
-                xticklabels=np.unique(y_true), yticklabels=np.unique(y_true))
-    # Ajouter le titre avec la loss moyenne
-    plt.title(f'Training loss and confusion matrix for level\nCrossEntropyLoss: {avg_loss:.4f}')
-    plt.xlabel('Predicted Label')
-    plt.ylabel('True Label')
+   
 
     # Deuxième sous-graphe : Graphique de la perte d'entraînement et validation
     plt.subplot(1, 2, 2)  # 1 ligne, 2 colonnes, 2e graphique
@@ -296,13 +263,9 @@ def main():
         print(f"Error: The CSV file '{csv_file}' does not exist.")
         return
     
-   # Specify the GPU index (0, 1, 2, ...)
-    gpu_id = 0  # Change this to the desired GPU index
-    device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
-
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers=[2, 2, 2, 2])
    
 
 if __name__ == "__main__":
