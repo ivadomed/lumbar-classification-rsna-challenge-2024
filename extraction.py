@@ -45,14 +45,17 @@ def process_directory_other(main_dir):
             
             # Find and process all axial images
             for ax_file in anat_filenames:
-                if "acq-ax" in ax_file and not "seg" in ax_file and not "patch" in ax_file:
-                    ax_file_path = os.path.join(anat_path, ax_file)
-                    
-                    output_file_path = ax_file_path.replace(".nii.gz", "_total_seg.nii.gz")
-                    
-                    
-                    # Call the transformation function
-                    _transform_seg2image(ax_file_path, sag_file, output_file_path)
+                try: 
+                    if "acq-ax" in ax_file and not "seg" in ax_file and not "patch" in ax_file:
+                        ax_file_path = os.path.join(anat_path, ax_file)
+                        
+                        output_file_path = ax_file_path.replace(".nii.gz", "_total_seg.nii.gz")
+                        
+                        
+                        # Call the transformation function
+                        _transform_seg2image(ax_file_path, sag_file, output_file_path)
+                except: 
+                    print (ax_file)
 
 def _transform_seg2image(
         image_path,
@@ -366,19 +369,21 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
     output_root_dir : root directory where output patches are stored
     """
     for subject_folder in os.listdir(root_dir):
-        
-        subject_path = os.path.join(root_dir, subject_folder, "anat")
-        output_subject_path = os.path.join(output_root_dir, subject_folder, "anat")
-        
-        # Check if it is a subdirectory
-        if os.path.isdir(subject_path):
-            os.makedirs(output_subject_path, exist_ok=True)
-            # Apply the patch extraction function to each subject
-            extract_patches_from_discs(subject_path, output_subject_path)
+        try :
+            subject_path = os.path.join(root_dir, subject_folder, "anat")
+            output_subject_path = os.path.join(output_root_dir, subject_folder, "anat")
+            
+            # Check if it is a subdirectory
+            if os.path.isdir(subject_path):
+                os.makedirs(output_subject_path, exist_ok=True)
+                # Apply the patch extraction function to each subject
+                extract_patches_from_discs(subject_path, output_subject_path)
 
-            # Apply the function to select the best patches if there are multiple ones for the same disc
-            select_best_patches(output_subject_path)
-        
+                # Apply the function to select the best patches if there are multiple ones for the same disc
+                select_best_patches(output_subject_path)
+
+        except: 
+            print(subject_folder)    
         
 
 def main():
