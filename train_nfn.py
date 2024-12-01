@@ -8,7 +8,7 @@ from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd
+    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -23,8 +23,43 @@ import seaborn as sns
 import numpy as np
 import nibabel as nib
 import argparse  
+import torchio as tio
+from image import Image
 
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
+
+
+def resample(
+        image,
+        mm = (1.0, 1.0, 1.0),
+    ):
+    '''
+    Resample the image to the target voxel size in mm.
+    Parameters
+    ----------
+    image : nibabel.Nifti1Image
+        The input image to resample.
+    mm : tuple[float, float, float]
+        The target voxel size in mm.
+    Returns
+    -------
+    nibabel.Nifti1Image
+        The resampled image.
+    '''
+    image_data = np.asanyarray(image.dataobj).astype(np.float64)
+    # Create result
+    subject = tio.Resample(mm)(tio.Subject(
+        image=tio.ScalarImage(tensor=image_data[None, ...], affine=image.affine),
+    ))
+    output_image_data = subject.image.data.numpy()[0, ...].astype(np.float64)
+    output_image = nib.Nifti1Image(output_image_data, subject.image.affine, image.header)
+    # Set qform twice to ensure consistent header information
+    # This addresses an issue where the second call to set_qform may alter output_image.header['pixdim']
+    # Applying it here prevents inconsistencies that could arise from later image edits
+    output_image.set_qform(output_image.affine)
+    output_image.set_qform(output_image.affine)
+
+    return output_image
 
 
 # transformation pipeline for the data
@@ -38,9 +73,8 @@ def get_transforms():
         EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
         ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
         NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-        SpatialPadd(keys=['image'], spatial_size=(8, 100, 50)),  # Padding pour atteindre une taille fixe
-        CenterSpatialCropd(keys=['image'], roi_size=(8, 100, 50)),  # Crop pour obtenir une taille fixe
-        #ConcatItemsd(keys=["image", "seg"], name="combined"),  # Concatène l'image et la segmentation sur la dimension des canaux
+        SpatialPadd(keys=['image'], spatial_size=(30, 140, 60)),  # Padding pour atteindre une taille fixe
+        CenterSpatialCropd(keys=['image'], roi_size=(30, 140, 60)),  # Crop pour obtenir une taille fixe
         ToTensord(keys=['image']) 
     ])
     
@@ -73,13 +107,31 @@ def prepare_data(data_dir, csv_file, transform):
                     disk_level = f"{parts[-5]}_{parts[-4]}"
 
                     if os.path.exists(image_path):
+                        
                         # Vérifier la forme de l'image
-                        image_data = nib.load(image_path).get_fdata()
+                        image = nib.load(image_path)
 
-                        # Print the size of the NIfTI volume
-                        print(f"Subject: {subject}, File: {file}, Image Shape: {image_data.shape}")
-                       
+                        
+                        image_data = image.get_fdata()
+                        image_affine = image.affine
+                        image_header = image.header
+
                         if image_data.ndim == 3:
+                            # resample the image
+                            image_res = nib.Nifti1Image(image_data, image_affine, header=image_header)
+                    
+                            
+                    
+                            image = resample(image_res, (0.6,0.6,0.6))
+                            image_data = image.get_fdata()
+
+                            pixdim = image.header.get_zooms()  # Get the voxel dimensions
+
+                            # Print out the resolution of the image
+                            print(f"Subject: {subject}, File: {file}, Image Shape: {image_data.shape}, Voxel Size (mm): {pixdim}")
+                                                
+                        
+                        
                             subject_id = (subject.replace('sub-', ''))
                             if 'left' in file:
                                 label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
@@ -265,7 +317,7 @@ def main():
     
     
 
-    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers=[2, 2, 2, 2])
+    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers=[3, 4, 6, 3])
    
 
 if __name__ == "__main__":
