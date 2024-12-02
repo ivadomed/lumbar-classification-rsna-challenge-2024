@@ -118,12 +118,12 @@ def prepare_data(data_dir, csv_file, transform):
 
                         if image_data.ndim == 3:
                             # resample the image
-                            image_res = nib.Nifti1Image(image_data, image_affine, header=image_header)
+                            #image_res = nib.Nifti1Image(image_data, image_affine, header=image_header)
                     
                             
                     
-                            image = resample(image_res, (4.5,0.6,0.6))
-                            image_data = image.get_fdata()
+                            #image = resample(image_res, (4.5,0.6,0.6))
+                            #image_data = image.get_fdata()
 
                             pixdim = image.header.get_zooms()  # Get the voxel dimensions
 
