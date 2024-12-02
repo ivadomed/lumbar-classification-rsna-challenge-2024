@@ -73,8 +73,8 @@ def get_transforms():
         EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
         ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
         NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-        SpatialPadd(keys=['image'], spatial_size=(30, 140, 60)),  # Padding pour atteindre une taille fixe
-        CenterSpatialCropd(keys=['image'], roi_size=(30, 140, 60)),  # Crop pour obtenir une taille fixe
+        SpatialPadd(keys=['image'], spatial_size=(8, 120, 60)),  # Padding pour atteindre une taille fixe
+        CenterSpatialCropd(keys=['image'], roi_size=(8, 120, 60)),  # Crop pour obtenir une taille fixe
         ToTensord(keys=['image']) 
     ])
     
@@ -100,7 +100,7 @@ def prepare_data(data_dir, csv_file, transform):
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
-                if '_patch.nii.gz' in file and 'foramen' in file:
+                if '_patch.nii.gz' in file and 'foramen' in file and 'T1w' in file:
                     image_path = os.path.join(subject_dir, file)
                     
                     parts = image_path.split('_')
@@ -122,7 +122,7 @@ def prepare_data(data_dir, csv_file, transform):
                     
                             
                     
-                            image = resample(image_res, (0.6,0.6,0.6))
+                            image = resample(image_res, (4.5,0.6,0.6))
                             image_data = image.get_fdata()
 
                             pixdim = image.header.get_zooms()  # Get the voxel dimensions
