@@ -8,7 +8,7 @@ from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized
+    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -66,16 +66,20 @@ def resample(
 def get_transforms():
         # Define the transform pipeline with rotation augmentation
     
-
+    
 
     common_transforms = Compose([
-        LoadImaged(keys=['image']),  # Charge l'image et la segmentation
-        EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
-        ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
-        NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-        SpatialPadd(keys=['image'], spatial_size=(8, 120, 60)),  # Padding pour atteindre une taille fixe
-        CenterSpatialCropd(keys=['image'], roi_size=(8, 120, 60)),  # Crop pour obtenir une taille fixe
-        ToTensord(keys=['image']) 
+        LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
+        EnsureChannelFirstd(keys=["T1","T2"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
+        ScaleIntensityd(keys=["T1","T2"]),  # Normalisation de l'intensité pour l'image
+        NormalizeIntensityd(keys=["T1","T2"], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
+        SpatialPadd(keys=["T1","T2"], spatial_size=(8, 120, 60)),  # Padding pour atteindre une taille fixe
+        CenterSpatialCropd(keys=["T1","T2"], roi_size=(8, 120, 60)),  # Crop pour obtenir une taille fixe
+        #RandAffined(keys=['T1', 'T2'], prob=0.5, translate_range=10), 
+        RandRotated(keys=['T1', 'T2'], prob=0.5, range_x=10.0),
+        #RandGaussianNoised(keys=['T1','T2'], prob=0.5),
+        ConcatItemsd(keys=["T1","T2"], name="combined"),
+        ToTensord(keys=['combined']) 
     ])
     
     return common_transforms
@@ -92,43 +96,54 @@ def prepare_data(data_dir, csv_file, transform):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
-        counter += 1
+        
         #if counter> 15 :
         #    break
-     
+        print(subject)
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
                 if '_patch.nii.gz' in file and 'foramen' in file and 'T1w' in file:
-                    image_path = os.path.join(subject_dir, file)
+                    t1_path = os.path.join(subject_dir, file)
                     
-                    parts = image_path.split('_')
-                    disk_level = f"{parts[-5]}_{parts[-4]}"
+                    parts = t1_path.split('_')
 
-                    if os.path.exists(image_path):
+                    disk_level = f"{parts[-5]}_{parts[-4]}"
+                    print(disk_level)
+                    for t2_file in os.listdir(subject_dir):
+                        if 'right' in file and 'left' in t2_file: 
+                            None 
+                        elif 'left' in file and 'right' in t2_file: 
+                            None
+                        else :
+                            if disk_level in t2_file and 'foramen' in t2_file and 'T2w' in t2_file:
+                                t2_path = os.path.join(subject_dir, file)
+                                print(file)
+                                print(t2_file)
+                                counter+=1
+
+                    if os.path.exists(t1_path):
                         
                         # Vérifier la forme de l'image
-                        image = nib.load(image_path)
-
+                        t1_image = nib.load(t1_path)
+                        t2_image = nib.load(t2_path)
                         
-                        image_data = image.get_fdata()
-                        image_affine = image.affine
-                        image_header = image.header
+                        t1_image_data = t1_image.get_fdata()
+                        t2_image_data = t2_image.get_fdata()
 
-                        if image_data.ndim == 3:
+                        if t1_image_data.ndim == 3 and t2_image_data.ndim == 3 :
                             # resample the image
+                            #image_affine = image.affine
+                            #image_header = image.header
                             #image_res = nib.Nifti1Image(image_data, image_affine, header=image_header)
-                    
-                            
-                    
                             #image = resample(image_res, (4.5,0.6,0.6))
                             #image_data = image.get_fdata()
 
-                            pixdim = image.header.get_zooms()  # Get the voxel dimensions
+                            #pixdim = t1_image.header.get_zooms()  # Get the voxel dimensions
 
                             # Print out the resolution of the image
-                            print(f"Subject: {subject}, File: {file}, Image Shape: {image_data.shape}, Voxel Size (mm): {pixdim}")
+                            #print(f"Subject: {subject}, File: {file}, Image Shape: {image_data.shape}, Voxel Size (mm): {pixdim}")
                                                 
                         
                         
@@ -138,7 +153,8 @@ def prepare_data(data_dir, csv_file, transform):
                             if 'right' in file:
                                 label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
                                 # Flip the image along the appropriate axis (e.g., flipping along x-axis)
-                                image_data = np.flip(image_data, axis=0)  # Flip along the first axis (x-axis)
+                                t1_image_data = np.flip(t1_image_data, axis=0)  # Flip along the first axis (x-axis)
+                                t2_image_data = np.flip(t2_image_data, axis=0)
 
                             # Obtenir l'étiquette brute
                             
@@ -146,9 +162,10 @@ def prepare_data(data_dir, csv_file, transform):
                             
                             # Convertir l'étiquette textuelle en valeur numérique
                             label_numeric = text2int.get(label, -1)
+                            
                             if label_numeric != -1:
                                 counter += 1
-                                data.append({"image": image_path, "label": label_numeric})
+                                data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combined": None})
 
 
     print(f"Nombre de données chargées: {counter}")
@@ -177,7 +194,7 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
             layers=layers,
             block_inplanes=[64, 128, 256, 512],
             spatial_dims=3,
-            n_input_channels=1,
+            n_input_channels=2,
             num_classes=3,
             ).cuda()
 
@@ -190,7 +207,7 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
-    model_name = f"nfn_model_layers_{layers}_epochs_{epochs}_lr_{lr}"
+    model_name = f"t1_t2_nfn_model_layers_{layers}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}"
 
     # Entraînement
     for epoch in range(epochs):
@@ -204,7 +221,7 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
 
         for batch in tqdm(train_loader):
             
-            inputs = batch["image"].cuda()
+            inputs = batch["combined"].cuda()
             labels = batch["label"].cuda()
             
             # Forward pass
@@ -236,7 +253,7 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
             for batch in tqdm(val_loader):
                 
                 
-                inputs = batch["image"].cuda()
+                inputs = batch["combined"].cuda()
                 labels = batch["label"].cuda()
 
                 # Forward pass
@@ -317,7 +334,7 @@ def main():
     
     
 
-    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=10, val_split=0.25, layers=[3, 4, 6, 3])
    
 
 if __name__ == "__main__":
