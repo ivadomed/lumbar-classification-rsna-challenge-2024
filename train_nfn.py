@@ -26,7 +26,8 @@ import argparse
 import torchio as tio
 from image import Image
 
-weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
+weight_challenge = torch.tensor([1.0, 2.0, 4.0]).cuda()
+
 
 
 def resample(
@@ -91,7 +92,7 @@ def prepare_data(data_dir, csv_file, transform):
     labels_df = pd.read_csv(csv_file)
     
     counter = 0
-
+    proportions = [0,0,0]
     # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
@@ -121,7 +122,7 @@ def prepare_data(data_dir, csv_file, transform):
                                 t2_path = os.path.join(subject_dir, file)
                                 print(file)
                                 print(t2_file)
-                                counter+=1
+                                
 
                     if os.path.exists(t1_path):
                         
@@ -164,19 +165,22 @@ def prepare_data(data_dir, csv_file, transform):
                             label_numeric = text2int.get(label, -1)
                             
                             if label_numeric != -1:
+                                proportions[label_numeric] += 1 
                                 counter += 1
                                 data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combined": None})
 
 
     print(f"Nombre de données chargées: {counter}")
-    return Dataset(data=data, transform=transform)
+    proportions = [i/counter for i in proportions]
+    print(proportions)
+    return Dataset(data=data, transform=transform), proportions
 
-def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers= [3, 4, 6, 3]):
+def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=12, val_split=0.25, layers= [3, 4, 6, 3], wd = 1e-4):
     # Préparer les données
     transform=get_transforms()
-    data = prepare_data(data_dir, csv_file, transform)
+    data, proportions = prepare_data(data_dir, csv_file, transform)
     
-
+    weight_proportions = torch.tensor(proportions).cuda()
 
     # Split train/test sets
     train_size = int((1 - val_split) * len(data))
@@ -201,7 +205,7 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
     
     
     criterion = CrossEntropyLoss(weight=weight)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
@@ -212,6 +216,7 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
     # Entraînement
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}/{epochs}")
+
         model.train()
         running_loss = 0.0
         correct_predictions = 0
@@ -334,7 +339,7 @@ def main():
     
     
 
-    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=10, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=10, val_split=0.25, layers=[3, 4, 6, 3], wd = 1e-4)
    
 
 if __name__ == "__main__":
