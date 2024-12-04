@@ -10,7 +10,7 @@ from monai.transforms import (
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotated
 )
-from monai.networks.nets import DenseNet201, ResNet
+from monai.networks.nets import ResNet, ResNetFeatures
 import torch
 from torch.utils.data import DataLoader
 import torch.optim as optim
@@ -105,10 +105,10 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     # Définir le modèle, la loss function et l'optimiseur
     
     
-    model = ResNet(
+    model = ResNetFeatures(
             block="bottleneck",
             layers=layers,
-            block_inplanes=[64, 128, 256, 512],
+            block_inplanes=[64, 128, 256, 512], 
             spatial_dims=3,
             n_input_channels=1,
             num_classes=3,
@@ -118,15 +118,15 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     model = model.to(device)
     
     criterion = CrossEntropyLoss(weight=weight)
-    #optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
+    #optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
-    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_wd_{wd}_bottleneck"
+    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_wd_{wd}"
 
     # Entraînement
     for epoch in range(epochs):
@@ -256,7 +256,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=30, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=15, val_split=0.25, layers=[3, 4, 6, 3])
    
 
 if __name__ == "__main__":
