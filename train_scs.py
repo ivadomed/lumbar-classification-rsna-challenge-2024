@@ -119,7 +119,9 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     model = model.to(device)
     
     criterion = CrossEntropyLoss(weight=weight)
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
+    optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+
+    #optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
@@ -197,9 +199,25 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     print("Entraînement terminé.")
 
 
-    # Évaluation sur le test set
-    model.load_state_dict(torch.load(f"{model_name}.pth", map_location=torch.device('cuda')))  # Or use 'cuda' if using GPU
-    model.eval()
+   # saving a plot of the training and its results
+    plt.figure(figsize=(15, 7))
+
+   
+
+    # Deuxième sous-graphe : Graphique de la perte d'entraînement et validation
+    #plt.subplot(1, 2, 2)  # 1 ligne, 2 colonnes, 2e graphique
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.title('Loss during Training')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # Sauvegarder la figure complète avec les deux graphiques
+    plt.tight_layout()  # Pour éviter que les graphiques se chevauchent
+    plt.savefig(f'training_loss_and_confusion_matrix_{model_name}.png')
+    plt.close()
+
     
 
     
