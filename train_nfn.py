@@ -25,10 +25,23 @@ import nibabel as nib
 import argparse  
 import torchio as tio
 from image import Image
+import torch.nn as nn
 
 weight_challenge = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
+# Custom ResNet with Dropout3d
+class ResNetWithDropout(ResNet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dropout = nn.Dropout(0.3)
 
+    def forward(self, x):
+        x = super().forward(x)
+        # Apply dropout after the main network
+        x = self.dropout(x)
+        return x
+
+        
 
 def resample(
         image,
@@ -77,7 +90,7 @@ def get_transforms():
         SpatialPadd(keys=["T1","T2"], spatial_size=(8, 120, 60)),  # Padding pour atteindre une taille fixe
         CenterSpatialCropd(keys=["T1","T2"], roi_size=(8, 120, 60)),  # Crop pour obtenir une taille fixe
         #RandAffined(keys=['T1', 'T2'], prob=0.5, translate_range=10), 
-        RandRotated(keys=['T1', 'T2'], prob=0.5, range_x=10.0),
+        #RandRotated(keys=['T1', 'T2'], prob=0.5, range_x=10.0),
         #RandGaussianNoised(keys=['T1','T2'], prob=0.5),
         ConcatItemsd(keys=["T1","T2"], name="combined"),
         ToTensord(keys=['combined']) 
@@ -171,7 +184,7 @@ def prepare_data(data_dir, csv_file, transform):
 
 
     print(f"Nombre de données chargées: {counter}")
-    proportions = [i/counter for i in proportions]
+    proportions = [1/(i/counter) for i in proportions]
     print(proportions)
     return Dataset(data=data, transform=transform), proportions
 
@@ -193,25 +206,25 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
     # Définir le modèle, la loss function et l'optimiseur
     
     
-    model = ResNet(
-            block="basic",
-            layers=layers,
-            block_inplanes=[64, 128, 256, 512],
-            spatial_dims=3,
-            n_input_channels=2,
-            num_classes=3,
-            ).cuda()
+    model = ResNetWithDropout(
+    block="basic",
+    layers=layers,
+    block_inplanes=[64, 128, 256, 512],
+    spatial_dims=3,
+    n_input_channels=2,
+    num_classes=3
+    ).cuda()
 
     
     
-    criterion = CrossEntropyLoss(weight=weight)
+    criterion = CrossEntropyLoss(weight=weight_proportions)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
-    model_name = f"t1_t2_nfn_model_layers_{layers}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}"
+    model_name = f"t1_t2_nfn_model_layers_{layers}_lr_{lr}_wd_{wd}_batch_size_{batch_size}_proportions_weight_{epochs}_challenge_weight_10"
 
     # Entraînement
     for epoch in range(epochs):
@@ -281,7 +294,81 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
             # Sauvegarde du modèle
             torch.save(model.state_dict(), f"{model_name}.pth")
 
-    print("Entraînement terminé.")
+    model.load_state_dict(torch.load(f"{model_name}.pth"))
+    criterion = CrossEntropyLoss(weight=weight_challenge)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    best_val_loss = float('inf')
+
+    #Finetuning 
+    for epoch in range(30):
+        print(f"Epoch {epoch+1}/{5}")
+
+        model.train()
+        running_loss = 0.0
+        correct_predictions = 0
+        total_predictions = 0
+
+
+
+        for batch in tqdm(train_loader):
+            
+            inputs = batch["combined"].cuda()
+            labels = batch["label"].cuda()
+            
+            # Forward pass
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+
+            # Backward pass et optimisation
+            loss.backward()
+            optimizer.step()
+
+            # Stats
+            running_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            correct_predictions += (predicted == labels).sum().item()
+            total_predictions += labels.size(0)
+
+
+        train_losses.append(running_loss / len(train_loader))
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {correct_predictions / total_predictions}%")
+
+        # Validation
+        model.eval()
+        val_loss = 0.0
+        correct_predictions = 0
+        total_predictions = 0
+
+        with torch.no_grad():
+            for batch in tqdm(val_loader):
+                
+                
+                inputs = batch["combined"].cuda()
+                labels = batch["label"].cuda()
+
+                # Forward pass
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+
+                val_loss += loss.item()
+                _, predicted = torch.max(outputs, 1)
+                correct_predictions += (predicted == labels).sum().item()
+                total_predictions += labels.size(0)
+
+
+        val_losses.append(val_loss / len(val_loader))
+        print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {100 * correct_predictions / total_predictions}%")
+
+        if val_losses[-1] < best_val_loss:
+            print(f"Validation loss improved from {best_val_loss:.4f} to {val_losses[-1]:.4f}. Saving model...")
+            best_val_loss = val_losses[-1]
+            
+            # Sauvegarde du modèle
+            torch.save(model.state_dict(), f"{model_name}_finetuned.pth")
+
+
+    print("Finetuning terminé.")
 
 
     
@@ -293,7 +380,7 @@ def train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=1
    
 
     # Deuxième sous-graphe : Graphique de la perte d'entraînement et validation
-    plt.subplot(1, 2, 2)  # 1 ligne, 2 colonnes, 2e graphique
+    #plt.subplot(1, 2, 2)  # 1 ligne, 2 colonnes, 2e graphique
     plt.plot(train_losses, label='Train Loss')
     plt.plot(val_losses, label='Validation Loss')
     plt.title('Loss during Training')
@@ -339,7 +426,7 @@ def main():
     
     
 
-    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=10, val_split=0.25, layers=[3, 4, 6, 3], wd = 1e-4)
+    train_and_evaluate_model(data_dir, csv_file, batch_size=8, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd = 1e-4)
    
 
 if __name__ == "__main__":

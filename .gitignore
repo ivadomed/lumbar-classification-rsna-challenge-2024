@@ -5,3 +5,4 @@ dataset_split.csv
 model*
 *.png
 *.pth
+20*

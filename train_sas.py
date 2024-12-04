@@ -24,8 +24,10 @@ import numpy as np
 import nibabel as nib
 import argparse  
 
-weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
-
+weight = torch.tensor([1.0, 2.0, 4.0, 1.0, 2.0, 4.0, 1.0, 2.0, 4.0]).cuda()
+"""weight_scs = torch.tensor([1.0, 2.0, 4.0, 0, 0, 0, 0, 0, 0]).cuda()
+weight_sasr = torch.tensor([0, 0, 0, 1.0, 2.0, 4.0, 0, 0, 0]).cuda()
+weight_sasl = weight = torch.tensor([0, 0, 0, 0, 0, 0, 1.0, 2.0, 4.0]).cuda()"""
 
 # transformation pipeline for the data
 def get_transforms():
@@ -60,6 +62,8 @@ def prepare_data(data_dir, csv_file, transform):
     for subject in os.listdir(data_dir):
         print(subject)
         subject_dir = os.path.join(data_dir, subject, 'anat')
+        #if counter>10:
+        #    break
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
@@ -75,14 +79,21 @@ def prepare_data(data_dir, csv_file, transform):
                         if image_data.ndim == 3:
                             subject_id = (subject.replace('sub-', ''))
                             
-                            label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
+                            label_column_scs = f'spinal_canal_stenosis_{disk_level.lower()}'
+                            label_column_sasl = f'left_subarticular_stenosis_{disk_level.lower()}'
+                            label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
                             # Obtenir l'étiquette brute
                             
-                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                            label_scs = labels_df.loc[labels_df['study_id'] == subject_id, label_column_scs].values[0]
+                            label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
+                            label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
                             
                             # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric = text2int.get(label, -1)
-                            if label_numeric != -1:
+                            label_numeric_scs = text2int.get(label_scs, -1)
+                            label_numeric_sasr = text2int.get(label_sasr, -1)
+                            label_numeric_sasl = text2int.get(label_sasl, -1)
+                            label_numeric = label_numeric_scs + label_numeric_sasr + label_numeric_sasl
+                            if label_numeric_scs >= 0 and label_numeric_sasr >=0 and label_numeric_sasl >= 0:
                                 counter += 1
                                 data.append({"image": image_path, "label": label_numeric})
 
@@ -90,7 +101,7 @@ def prepare_data(data_dir, csv_file, transform):
     print(f"Nombre de données chargées: {counter}")
     return Dataset(data=data, transform=transform)
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4 ):
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3]):
     # Préparer les données
     transform=get_transforms()
     data = prepare_data(data_dir, csv_file, transform)
@@ -112,26 +123,33 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             block_inplanes=[64, 128, 256, 512],
             spatial_dims=3,
             n_input_channels=1,
-            num_classes=3,
+            num_classes=9,
             ).cuda()
 
     
     model = model.to(device)
     
     criterion = CrossEntropyLoss(weight=weight)
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    """criterion_scs = CrossEntropyLoss(weight=weight_scs)
+    criterion_sasr = CrossEntropyLoss(weight=weight_sasr)
+    criterion_sasl = CrossEntropyLoss(weight=weight_sasl)"""
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
-    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_wd_{wd}"
+    model_name = f"sas_model_layers_{layers}_epochs_{epochs}_lr_{lr}"
 
     # Entraînement
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}/{epochs}")
         model.train()
         running_loss = 0.0
+        loss_scs = 0 
+        loss_sasr = 0 
+        loss_sasl = 0 
         correct_predictions = 0
         total_predictions = 0
 
@@ -142,24 +160,37 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             inputs = batch["image"].cuda()
             labels = batch["label"].cuda()
             
+            
             # Forward pass
             optimizer.zero_grad()
             outputs = model(inputs)
+            
             loss = criterion(outputs, labels)
 
             # Backward pass et optimisation
             loss.backward()
             optimizer.step()
-
+            
             # Stats
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
             correct_predictions += (predicted == labels).sum().item()
             total_predictions += labels.size(0)
 
+            """scs = criterion_scs(outputs,labels)
+            loss_scs += scs.item()
+            sasr = criterion_sasr(outputs, labels)
+            loss_sasr += sasr.item()
+            sasl = criterion_sasl(outputs, labels)
+            loss_sasl += sasl.item()"""
+
 
         train_losses.append(running_loss / len(train_loader))
+        """scs = scs/len(train_loader)
+        sasl = sasl/len(train_loader)
+        sasr = sasr / len(train_loader)"""
         print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
+        "print(f'scs:{loss_scs}, sasr:{loss_sasr}, sasl:{loss_sasl}')"
 
         # Validation
         model.eval()
@@ -196,10 +227,26 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
     print("Entraînement terminé.")
 
+    # saving a plot of the training and its results
+    plt.figure(figsize=(15, 7))
 
-    # Évaluation sur le test set
-    model.load_state_dict(torch.load(f"{model_name}.pth", map_location=torch.device('cuda')))  # Or use 'cuda' if using GPU
-    model.eval()
+   
+
+    # Deuxième sous-graphe : Graphique de la perte d'entraînement et validation
+    #plt.subplot(1, 2, 2)  # 1 ligne, 2 colonnes, 2e graphique
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.title('Loss during Training')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # Sauvegarder la figure complète avec les deux graphiques
+    plt.tight_layout()  # Pour éviter que les graphiques se chevauchent
+    plt.savefig(f'training_loss_and_confusion_matrix_{model_name}.png')
+    plt.close()
+
+    
     
 
     
@@ -239,7 +286,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=15, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=6, val_split=0.25, layers=[3, 4, 6, 3])
    
 
 if __name__ == "__main__":
