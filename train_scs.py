@@ -40,6 +40,7 @@ def get_transforms():
         NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
         SpatialPadd(keys=['image'], spatial_size=(100, 100, 4)),  # Padding pour atteindre une taille fixe
         CenterSpatialCropd(keys=['image'], roi_size=(100, 100, 4)),  # Crop pour obtenir une taille fixe
+        RandRotated(keys=['image'], prob=0.5, range_x=0.5),
         ToTensord(keys=['image']) 
     ])
     
@@ -126,7 +127,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
-    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_wd_{wd}_bottleneck"
+    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_wd_{wd}_bottleneck_new_transform_rot"
 
     # Entraînement
     for epoch in range(epochs):

@@ -42,7 +42,6 @@ def get_transforms():
         NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
         SpatialPadd(keys=['image'], spatial_size=(100, 100, 4)),  # Padding pour atteindre une taille fixe
         CenterSpatialCropd(keys=['image'], roi_size=(100, 100, 4)),  # Crop pour obtenir une taille fixe
-        #ConcatItemsd(keys=["image", "seg"], name="combined"),  # Concatène l'image et la segmentation sur la dimension des canaux
         ToTensord(keys=['image']) 
     ])
     
@@ -101,7 +100,7 @@ def prepare_data(data_dir, csv_file, transform):
     print(f"Nombre de données chargées: {counter}")
     return Dataset(data=data, transform=transform)
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3]):
+def train_and_evaluate_model( data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3]):
     # Préparer les données
     transform=get_transforms()
     data = prepare_data(data_dir, csv_file, transform)
@@ -118,7 +117,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     
     
     model = ResNet(
-            block="basic",
+            block="bottleneck",
             layers=layers,
             block_inplanes=[64, 128, 256, 512],
             spatial_dims=3,
@@ -127,7 +126,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             ).cuda()
 
     
-    model = model.to(device)
+    
     
     criterion = CrossEntropyLoss(weight=weight)
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -280,13 +279,10 @@ def main():
         print(f"Error: The CSV file '{csv_file}' does not exist.")
         return
     
-   # Specify the GPU index (0, 1, 2, ...)
-    gpu_id = 0  # Change this to the desired GPU index
-    device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=6, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model( data_dir, csv_file, batch_size=8, lr=1e-4, epochs=30, val_split=0.25, layers=[3, 4, 6, 3])
    
 
 if __name__ == "__main__":
