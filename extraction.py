@@ -45,14 +45,17 @@ def process_directory_other(main_dir):
             
             # Find and process all axial images
             for ax_file in anat_filenames:
-                if "acq-ax" in ax_file and not "seg" in ax_file and not "patch" in ax_file:
-                    ax_file_path = os.path.join(anat_path, ax_file)
-                    
-                    output_file_path = ax_file_path.replace(".nii.gz", "_total_seg.nii.gz")
-                    
-                    
-                    # Call the transformation function
-                    _transform_seg2image(ax_file_path, sag_file, output_file_path)
+                try: 
+                    if "acq-ax" in ax_file and not "seg" in ax_file and not "patch" in ax_file:
+                        ax_file_path = os.path.join(anat_path, ax_file)
+                        
+                        output_file_path = ax_file_path.replace(".nii.gz", "_total_seg.nii.gz")
+                        
+                        
+                        # Call the transformation function
+                        _transform_seg2image(ax_file_path, sag_file, output_file_path)
+                except: 
+                    print (ax_file)
 
 def _transform_seg2image(
         image_path,
@@ -200,6 +203,8 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                         patch_nifti_img_right = nib.Nifti1Image(patch_img_right, affine=original_affine)
 
                         # Save the patch to the specified location
+                        print(patch_img_filepath_left)
+                        print(patch_img_filepath_right)
                         nib.save(patch_nifti_img_left, patch_img_filepath_left)
                         nib.save(patch_nifti_img_right, patch_img_filepath_right)
 
@@ -266,7 +271,7 @@ def extract_patches_from_discs(nii_folder, output_folder):
     axial_segmentations = []
     sagittal_T2_segmentations = []
     sagittal_T1_segmentations = []
-    saggital_T1_images = []
+    sagittal_T1_images = []
     sagittal_T2_images = []
 
     
@@ -280,10 +285,10 @@ def extract_patches_from_discs(nii_folder, output_folder):
             sagittal_T2_segmentations.append(filename)
         elif 'acq-sag' in filename and 'T1w' in filename and 'total_seg.nii.gz' in filename:
             sagittal_T1_segmentations.append(filename)
-        elif 'acq-sag' in filename and 'T2' and filename.endswith('.nii.gz') and not filename.endswith('_seg.nii.gz'):          
+        elif 'acq-sag' in filename and 'T2' in filename and filename.endswith('.nii.gz') and not filename.endswith('_seg.nii.gz'):          
             sagittal_T2_images.append(filename)
-        elif 'acq-sag' in filename and 'T1' and filename.endswith('.nii.gz') and not filename.endswith('_seg.nii.gz'):          
-            saggital_T1_images.append(filename)
+        elif 'acq-sag' in filename and 'T1' in filename and filename.endswith('.nii.gz') and not filename.endswith('_seg.nii.gz'):          
+            sagittal_T1_images.append(filename)
 
     # Sort lists to ensure corresponding order
     axial_segmentations.sort()
@@ -291,11 +296,14 @@ def extract_patches_from_discs(nii_folder, output_folder):
     sagittal_T2_segmentations.sort()
     sagittal_T2_images.sort()
     sagittal_T1_segmentations.sort()
-    saggital_T1_images.sort()
+    sagittal_T1_images.sort()
     sagittal_T2_segmentations.sort()
     
+    print(len(sagittal_T2_segmentations),len(sagittal_T2_images))
+    print(len(sagittal_T1_segmentations),len(sagittal_T1_images))
+
     extract_and_save_sagittal_patches(sagittal_T2_images, sagittal_T2_segmentations, nii_folder, output_folder)
-    extract_and_save_sagittal_patches(saggital_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)
+    extract_and_save_sagittal_patches(sagittal_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)
     extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder)
 
 
@@ -366,19 +374,21 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
     output_root_dir : root directory where output patches are stored
     """
     for subject_folder in os.listdir(root_dir):
-        
-        subject_path = os.path.join(root_dir, subject_folder, "anat")
-        output_subject_path = os.path.join(output_root_dir, subject_folder, "anat")
-        
-        # Check if it is a subdirectory
-        if os.path.isdir(subject_path):
-            os.makedirs(output_subject_path, exist_ok=True)
-            # Apply the patch extraction function to each subject
-            extract_patches_from_discs(subject_path, output_subject_path)
+        try :
+            subject_path = os.path.join(root_dir, subject_folder, "anat")
+            output_subject_path = os.path.join(output_root_dir, subject_folder, "anat")
+            
+            # Check if it is a subdirectory
+            if os.path.isdir(subject_path):
+                os.makedirs(output_subject_path, exist_ok=True)
+                # Apply the patch extraction function to each subject
+                extract_patches_from_discs(subject_path, output_subject_path)
 
-            # Apply the function to select the best patches if there are multiple ones for the same disc
-            select_best_patches(output_subject_path)
-        
+                # Apply the function to select the best patches if there are multiple ones for the same disc
+                #select_best_patches(output_subject_path)
+
+        except: 
+            print(subject_folder)    
         
 
 def main():

@@ -98,42 +98,7 @@ def reorient(image):
     return output_image
 
 
-# function added to resample the data to the median values of each image type
-def resample(
-        image,
-        mm = (1.0, 1.0, 1.0),
-    ):
-    '''
-    Resample the image to the target voxel size in mm.
 
-    Parameters
-    ----------
-    image : nibabel.Nifti1Image
-        The input image to resample.
-    mm : tuple[float, float, float]
-        The target voxel size in mm.
-
-    Returns
-    -------
-    nibabel.Nifti1Image
-        The resampled image.
-    '''
-    image_data = np.asanyarray(image.dataobj).astype(np.float64)
-
-    # Create result
-    subject = tio.Resample(mm)(tio.Subject(
-        image=tio.ScalarImage(tensor=image_data[None, ...], affine=image.affine),
-    ))
-    output_image_data = subject.image.data.numpy()[0, ...].astype(np.float64)
-
-    output_image = nib.Nifti1Image(output_image_data, subject.image.affine, image.header)
-    # Set qform twice to ensure consistent header information
-    # This addresses an issue where the second call to set_qform may alter output_image.header['pixdim']
-    # Applying it here prevents inconsistencies that could arise from later image edits
-    output_image.set_qform(output_image.affine)
-    output_image.set_qform(output_image.affine)
-
-    return output_image
 
 
 # global function that processes one subject creating nifti volumes in the bids format
@@ -202,11 +167,11 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 # then apply the resampling to the median values resolution for axial T2w images
                 if acq == 'ax': 
                     
-                    resampled_image = resample(oriented_image, mm=(0.4, 0.4, 3.5))
-                    nib.save(resampled_image, new_path)
+                    
+                    nib.save(oriented_image, new_path)
                 else:
-                    resampled_image = resample(oriented_image, mm=(1.0, 1.0, 1.0))
-                    nib.save(resampled_image, new_path)
+                    
+                    nib.save(oriented_image, new_path)
                     
 
         else : 
@@ -227,13 +192,13 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 # then apply the resampling to the median values resolution for axial T2w images
                 if acq == 'ax': 
                     
-                    resampled_image = resample(oriented_image, mm=(0.5, 0.5, 4.5))
                     
                     
-                    nib.save(resampled_image, new_path)
+                    
+                    nib.save(oriented_image, new_path)
                 else:
-                    resampled_image = resample(oriented_image, mm=(1.0, 1.0, 1.0))
-                    nib.save(resampled_image, new_path)
+                    
+                    nib.save(oriented_image, new_path)
 
 # Main function to run the processing
 def main():
