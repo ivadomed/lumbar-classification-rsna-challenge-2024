@@ -340,6 +340,10 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
     root_dir : root directory containing subject subdirectories
     output_root_dir : root directory where output patches are stored
     """
+
+    sub_treated = 0
+    sub_failed = 0
+
     for subject_folder in os.listdir(root_dir):
         
         subject_path = os.path.join(root_dir, subject_folder, "anat")
@@ -348,11 +352,34 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
         # Check if it is a subdirectory
         if os.path.isdir(subject_path):
             os.makedirs(output_subject_path, exist_ok=True)
-            # Apply the patch extraction function to each subject
-            extract_patches_from_discs(subject_path, output_subject_path)
+            try:
+                # Extract patches from discs
+                extract_patches_from_discs(subject_path, output_subject_path)
+                
+                # Select the best patches if there are multiple ones for the same disc
+                select_best_patches(output_subject_path)
 
-            # Apply the function to select the best patches if there are multiple ones for the same disc
-            select_best_patches(output_subject_path)
+                print(f"Processed subject {subject_folder}")
+
+                sub_treated += 1
+
+            except Exception as e:
+                # Print a message indicating that an exception was raised
+                print("An exception was raised during patch processing.")
+                
+                # Print the arguments passed to 'extract_patches_from_discs'
+                print(f"Arguments for 'extract_patches_from_discs': subject_path={subject_path}, output_subject_path={output_subject_path}")
+                
+                # Print the arguments passed to 'select_best_patches'
+                print(f"Arguments for 'select_best_patches': output_subject_path={output_subject_path}")
+                
+                # Print the type of exception and its details
+                print(f"Error type: {type(e).__name__}, Details: {e}")
+
+                sub_failed += 1
+    
+    print(f"Processed {sub_treated} subjects, {sub_failed} subjects failed")
+
         
 
 folder = "/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20241206nii_data"
