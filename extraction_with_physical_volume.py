@@ -355,7 +355,7 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
             select_best_patches(output_subject_path)
         
 
-folder = "C:/Users/abels/OneDrive/Documents/NeuroPoly/rsna-challenge/test_bids"
+folder = "/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20241206nii_data"
 
 def main():
     # Ensure a directory argument is passed
@@ -375,3 +375,4 @@ def main():
     # Run the processing function for all subjects in the specified directory
     process_all_subjects_in_directory(root_dir, output_dir)
 
+process_all_subjects_in_directory(folder, folder)
