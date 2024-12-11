@@ -12,7 +12,7 @@ from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotated,
-    Spacingd, RandSpatialCropd
+    Spacingd, RandSpatialCropd, RandBiasFieldd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -75,6 +75,7 @@ def get_transforms(mode='basic'):
             Spacingd(keys=['image'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
             RandRotated(keys=['image'], prob=1, range_x=0.2),
+            RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)), # Random bias field
             SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
             RandSpatialCropd(keys=['image'], roi_size=(120, 80, 6), random_size=False),  # Crop pour obtenir une taille fixe
             ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
@@ -147,15 +148,18 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     if augment:
         transform=get_transforms('random')
         data_aug = prepare_data(data_dir, csv_file, transform)
+        data_aug_prime = prepare_data(data_dir, csv_file, transform)
         train_aug, val_aug = torch.utils.data.random_split(data_aug, [train_size, val_size], generator=generator)
+        train_aug_prime, val_aug_prime = torch.utils.data.random_split(data_aug_prime, [train_size, val_size], generator=generator)
 
         # then turn the subset for training back into a dataset
         train_dataset = SubsetAsDataset(train_dataset)
         train_aug = SubsetAsDataset(train_aug)
+        train_aug_prime = SubsetAsDataset(train_aug_prime)
 
         # then concatenate the two datasets
-        train_dataset = ConcatDataset([train_dataset, train_aug])
-    
+        # train_dataset = ConcatDataset([train_dataset, train_aug])
+        train_dataset = ConcatDataset([train_dataset, train_aug, train_aug_prime])
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
@@ -180,7 +184,8 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'weight_decay': wd,
         'augment': augment,
         'train_set_size': len(train_dataset),
-        'val_set_size': len(val_dataset)
+        'val_set_size': len(val_dataset),
+        'randbiaisfield prob and coeff': (0.4, 0.3)
     }
     model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}"
 
@@ -277,9 +282,6 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     plt.plot(train_losses, label='Train Loss')
     plt.plot(val_losses, label='Validation Loss')
     plt.title('Loss during Training')
-    # writing down on the figure the best validation loss stored in best_val_loss
-    plt.text(epochs-1, val_losses[-1], f'Best Validation Loss: {best_val_loss:.4f}', ha='right')
-
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
@@ -300,10 +302,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     plt.tight_layout()  # Pour éviter que les graphiques se chevauchent
     plt.savefig(f'training_loss_{model_name}.png')
     plt.close()
-
-    
-
-    
+ 
     
 
 
@@ -340,7 +339,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=30, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=100, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":
