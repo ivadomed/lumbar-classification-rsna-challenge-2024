@@ -6,4 +6,5 @@ model*
 *.png
 *.pth
 20*
+models/
 
