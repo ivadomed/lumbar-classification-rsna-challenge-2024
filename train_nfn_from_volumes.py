@@ -12,11 +12,9 @@ from monai.transforms import (
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 import torch.optim as optim
 from torch.nn import CrossEntropyLoss
-from monai.transforms import Compose
-from monai.data import Dataset
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -29,6 +27,15 @@ import torch.nn as nn
 
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
+class SubsetAsDataset(Dataset):
+    def __init__(self, subset):
+        self.subset = subset
+    
+    def __len__(self):
+        return len(self.subset)
+    
+    def __getitem__(self, idx):
+        return self.subset[idx]
 
 # transformation pipeline for the data
 def get_transforms(mode='basic'):
@@ -44,8 +51,8 @@ def get_transforms(mode='basic'):
             CenterSpatialCropd(keys=['T1','T2'], roi_size=(10, 70, 70)),  # Crop pour obtenir une taille fixe
             ScaleIntensityd(keys=['T1','T2']),  # Normalisation de l'intensité pour l'image
             NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-            ConcatItemsd(keys=["T1","T2"], name="combined"),
-            ToTensord(keys=['combined']) 
+            ConcatItemsd(keys=["T1","T2"], name="combinaison"),
+            ToTensord(keys=["combinaison"]) 
         ])
     elif mode == 'random':
         # same but changing steps as random steps
@@ -58,8 +65,8 @@ def get_transforms(mode='basic'):
             RandSpatialCropd(keys=['T1','T2'], roi_size=(10, 70, 70), random_size=False),  # Crop pour obtenir une taille fixe
             ScaleIntensityd(keys=['T1','T2']),  # Normalisation de l'intensité pour l'image
             NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-            ConcatItemsd(keys=["T1","T2"], name="combined"),
-            ToTensord(keys=['combined']) 
+            ConcatItemsd(keys=["T1","T2"], name="combinaison"),
+            ToTensord(keys=["combinaison"]) 
         ])
     return common_transforms
     
@@ -146,7 +153,7 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
                             if label_numeric != -1:
                                 proportions[label_numeric] += 1 
                                 counter += 1
-                                data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combined": None})
+                                data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
 
 
     print(f"Nombre de données chargées: {counter}")
@@ -157,7 +164,7 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
 def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
     # Préparer les données
     transform=get_transforms()
-    data = prepare_data(data_dir, csv_file, transform)
+    data, proportions = prepare_data(data_dir, csv_file, transform)
 
     # constant key for random gen
     seed = 42
@@ -173,17 +180,17 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     if augment:
         transform=get_transforms('random')
         data_aug = prepare_data(data_dir, csv_file, transform)
-        data_aug_prime = prepare_data(data_dir, csv_file, transform)
+        # data_aug_prime = prepare_data(data_dir, csv_file, transform)
         train_aug, val_aug = torch.utils.data.random_split(data_aug, [train_size, val_size], generator=generator)
-        train_aug_prime, val_aug_prime = torch.utils.data.random_split(data_aug_prime, [train_size, val_size], generator=generator)
+        # train_aug_prime, val_aug_prime = torch.utils.data.random_split(data_aug_prime, [train_size, val_size], generator=generator)
 
         # then turn the subset for training back into a dataset
-        #train_dataset = SubsetAsDataset(train_dataset)
-        #train_aug = SubsetAsDataset(train_aug)
+        train_dataset = SubsetAsDataset(train_dataset)
+        train_aug = SubsetAsDataset(train_aug)
         #train_aug_prime = SubsetAsDataset(train_aug_prime)
 
         # then concatenate the two datasets
-        # train_dataset = ConcatDataset([train_dataset, train_aug])
+        train_dataset = ConcatDataset([train_dataset, train_aug])
         # train_dataset = ConcatDataset([train_dataset, train_aug, train_aug_prime])
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -211,7 +218,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'train_set_size': len(train_dataset),
         'val_set_size': len(val_dataset)
     }
-    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}"
+    model_name = f"nfn_t1_t2_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}"
 
     
     model = model.to(device)
@@ -237,8 +244,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
 
         for batch in tqdm(train_loader):
-            
-            inputs = batch["image"].cuda()
+            inputs = batch["combinaison"].cuda()
             labels = batch["label"].cuda()
             
             # Forward pass
@@ -270,7 +276,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             for batch in tqdm(val_loader):
                 
                 
-                inputs = batch["image"].cuda()
+                inputs = batch["combinaison"].cuda()
                 labels = batch["label"].cuda()
 
                 # Forward pass
@@ -363,7 +369,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=50, val_split=0.25, layers=[3, 4, 6, 3], augment=False)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=60, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":
