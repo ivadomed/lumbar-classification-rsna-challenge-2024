@@ -179,7 +179,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     # data augmentation if augment=True
     if augment:
         transform=get_transforms('random')
-        data_aug = prepare_data(data_dir, csv_file, transform)
+        data_aug, proportions = prepare_data(data_dir, csv_file, transform)
         # data_aug_prime = prepare_data(data_dir, csv_file, transform)
         train_aug, val_aug = torch.utils.data.random_split(data_aug, [train_size, val_size], generator=generator)
         # train_aug_prime, val_aug_prime = torch.utils.data.random_split(data_aug_prime, [train_size, val_size], generator=generator)
