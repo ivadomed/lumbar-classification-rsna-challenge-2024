@@ -62,6 +62,7 @@ def get_transforms(mode='basic', side='left'):
     second_transforms_random = Compose([
         RandRotated(keys=['image'], prob=1, range_x=0.2),
         SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, -1, -1)),  # crop pour récupérer la gauche
+        RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)), # Random bias field
         SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)),  # Padding pour atteindre une taille fixe
         RandSpatialCropd(keys=['image'], roi_size=(60, 80, 6), random_size=False),  # Crop pour obtenir une taille fixe
         ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
@@ -89,6 +90,7 @@ def prepare_data(data_dir, csv_file, transform_left, transform_right):
     labels_df = pd.read_csv(csv_file)
     
     counter = 0
+    counter_invalid = 0
 
     # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
@@ -123,51 +125,51 @@ def prepare_data(data_dir, csv_file, transform_left, transform_right):
                             # Convertir l'étiquette textuelle en valeur numérique
                             label_numeric_sasr = text2int.get(label_sasr, -1)
                             label_numeric_sasl = text2int.get(label_sasl, -1)
-                            data_right.append({"image": image_path, "label": label_numeric_sasr})
-                            data_left.append({"image": image_path, "label": label_numeric_sasl})
-
-                            counter += 2
+                            if label_numeric_sasr in [0, 1, 2] and label_numeric_sasl in [0, 1, 2]:
+                                data_right.append({"image": image_path, "label": label_numeric_sasr})
+                                data_left.append({"image": image_path, "label": label_numeric_sasl})
+                                counter += 2
+                            else:
+                                counter_invalid += 1
+                                print(f"Étiquette {label_sasr} ou {label_sasl} invalide pour {subject_id} à {disk_level}")
 
 
     print(f"Nombre de données chargées: {counter}")
+    print(f"Nombre de données invalides: {counter_invalid}")
     return Dataset(data=data_left, transform=transform_left), Dataset(data=data_right, transform=transform_right)
 
     
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
+
+    # Préparer les données
+    data_dir_train = os.path.join(data_dir, 'training')
+    data_dir_val = os.path.join(data_dir, 'validation')
+
     # Préparer les données
     transform_left=get_transforms(mode='basic', side='left')
     transform_right=get_transforms(mode='basic', side='right')
-    data_left, data_right = prepare_data(data_dir, csv_file, transform_left=transform_left, transform_right=transform_right)
+    data_left_train, data_right_train = prepare_data(data_dir_train, csv_file, transform_left=transform_left, transform_right=transform_right)
+    data_left_val, data_right_val = prepare_data(data_dir_val, csv_file, transform_left=transform_left, transform_right=transform_right)
     
-    data = ConcatDataset([data_left, data_right])
+    data_train = ConcatDataset([data_left_train, data_right_train])
+    data_val = ConcatDataset([data_left_val, data_right_val])
 
-    # constant key for random gen
-    seed = 42
-    generator = torch.Generator().manual_seed(seed)
 
-    # Split train/val sets
-    train_size = int((1 - val_split) * len(data))
-    val_size = len(data) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(data, [train_size, val_size], generator=generator)
-    
 
     # data augmentation if augment=True
     if augment:
         rand_trans_right = get_transforms(mode='random', side='right')
         rand_trans_left = get_transforms(mode='random', side='left')
-        data_aug_left, data_aug_right = prepare_data(data_dir, csv_file, transform_left=rand_trans_left, transform_right=rand_trans_right)
+        data_aug_left, data_aug_right = prepare_data(data_dir_train, csv_file, transform_left=rand_trans_left, transform_right=rand_trans_right)
         data_aug = ConcatDataset([data_aug_left, data_aug_right])
-        train_aug, val_aug = torch.utils.data.random_split(data_aug, [train_size, val_size], generator=generator)
-
-        # then turn the subset for training back into a dataset
-        train_dataset = SubsetAsDataset(train_dataset)
-        train_aug = SubsetAsDataset(train_aug)
+        data_aug_prime_left, data_aug_prime_right = prepare_data(data_dir_train, csv_file, transform_left=rand_trans_left, transform_right=rand_trans_right)
+        data_aug_prime = ConcatDataset([data_aug_prime_left, data_aug_prime_right])
 
         # then concatenate the two datasets
-        train_dataset = ConcatDataset([train_dataset, train_aug])
+        train_dataset = ConcatDataset([data_train, data_aug, data_aug_prime])
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(data_val, batch_size=batch_size, shuffle=False)
     
     # Définir le modèle, la loss function et l'optimiseur
     model = ResNet(
@@ -189,15 +191,15 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'weight_decay': wd,
         'augment': augment,
         'train_set_size': len(train_dataset),
-        'val_set_size': len(val_dataset),
+        'val_set_size': len(data_val),
         'randbiaisfield prob and coeff': (0.4, 0.3)
     }
-    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}"
+    model_name = f"sas_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}"
 
     
     model = model.to(device)
     
-    criterion = CrossEntropyLoss(weight=weight)
+    criterion = CrossEntropyLoss(weight=weight_challenge)
     #optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
@@ -344,7 +346,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], augment=False)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=50, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":

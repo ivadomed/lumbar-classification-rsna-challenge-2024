@@ -129,40 +129,27 @@ def prepare_data(data_dir, csv_file, transform):
     print(f"Nombre de données chargées: {counter}")
     return Dataset(data=data, transform=transform)
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=0.0001, augment=False):
     # Préparer les données
+    data_dir_train = os.path.join(data_dir, 'training')
+    data_dir_val = os.path.join(data_dir, 'validation')
+
     transform=get_transforms()
-    data = prepare_data(data_dir, csv_file, transform)
-
-    # constant key for random gen
-    seed = 42
-    generator = torch.Generator().manual_seed(seed)
-
-    # Split train/val sets
-    train_size = int((1 - val_split) * len(data))
-    val_size = len(data) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(data, [train_size, val_size], generator=generator)
+    data_train = prepare_data(data_dir_train, csv_file, transform)
+    data_val = prepare_data(data_dir_val, csv_file, transform)
     
 
     # data augmentation if augment=True
     if augment:
-        transform=get_transforms('random')
-        data_aug = prepare_data(data_dir, csv_file, transform)
-        data_aug_prime = prepare_data(data_dir, csv_file, transform)
-        train_aug, val_aug = torch.utils.data.random_split(data_aug, [train_size, val_size], generator=generator)
-        train_aug_prime, val_aug_prime = torch.utils.data.random_split(data_aug_prime, [train_size, val_size], generator=generator)
+        transform = get_transforms(mode='random')
+        data_train_prime = prepare_data(data_dir_train, csv_file, transform)
+        data_train_second = prepare_data(data_dir_train, csv_file, transform)
+        data_train_third = prepare_data(data_dir_train, csv_file, transform)
 
-        # then turn the subset for training back into a dataset
-        train_dataset = SubsetAsDataset(train_dataset)
-        train_aug = SubsetAsDataset(train_aug)
-        train_aug_prime = SubsetAsDataset(train_aug_prime)
+        data_train = ConcatDataset([data_train, data_train_prime, data_train_second, data_train_third])
 
-        # then concatenate the two datasets
-        # train_dataset = ConcatDataset([train_dataset, train_aug])
-        train_dataset = ConcatDataset([train_dataset, train_aug, train_aug_prime])
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(data_train, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(data_val, batch_size=batch_size, shuffle=False)
     
     # Définir le modèle, la loss function et l'optimiseur
     model = ResNet(
@@ -183,11 +170,11 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'layers': layers,
         'weight_decay': wd,
         'augment': augment,
-        'train_set_size': len(train_dataset),
-        'val_set_size': len(val_dataset),
+        'train_set_size': len(data_train),
+        'val_set_size': len(data_val),
         'randbiaisfield prob and coeff': (0.4, 0.3)
     }
-    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}"
+    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}_3times"
 
     
     model = model.to(device)
@@ -322,7 +309,6 @@ def main():
     csv_file = args.csv_file
     
 
-
     # Check if the data directory exists
     if not os.path.exists(data_dir):
         print(f"Error: The data directory '{data_dir}' does not exist.")
@@ -339,7 +325,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=100, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=50, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":
