@@ -45,9 +45,9 @@ def get_transforms(mode='basic'):
 
     if mode == 'basic':
         common_transforms = Compose([
-            LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            Spacingd(keys=['T1','T2'], pixdim=(2,4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
-            EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
+            LoadImaged(keys=['T1','T2','T1_seg','T2_seg']),  # Charge l'image et la segmentation
+            Spacingd(keys=['T1','T2','T1_seg','T2_seg'], pixdim=(2,4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
+            EnsureChannelFirstd(keys=['T1','T2','T1_seg','T2_seg']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
             SpatialPadd(keys=['T1','T2'], spatial_size=(10, 70, 70)),  # Padding pour atteindre une taille fixe
             CenterSpatialCropd(keys=['T1','T2'], roi_size=(10, 70, 70)),  # Crop pour obtenir une taille fixe
             ScaleIntensityd(keys=['T1','T2']),  # Normalisation de l'intensité pour l'image

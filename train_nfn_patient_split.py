@@ -162,29 +162,24 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
     print(proportions)
     return Dataset(data=data, transform=transform), proportions
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
+def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
     # Préparer les données
+    
     transform=get_transforms()
-    data, proportions = prepare_data(data_dir, csv_file, transform)
-
+    train_dataset = prepare_data(train_dir, csv_file, transform)
+    val_dataset = prepare_data(val_dir, csv_file, transform)
     # constant key for random gen
     seed = 42
     generator = torch.Generator().manual_seed(seed)
 
-    # Split train/val sets
-    train_size = int((1 - val_split) * len(data))
-    val_size = len(data) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(data, [train_size, val_size], generator=generator)
-    
+     
 
     # data augmentation if augment=True
     if augment:
         transform=get_transforms('random')
-        data_aug, proportions = prepare_data(data_dir, csv_file, transform)
+        train_aug, proportions = prepare_data(train_dir, csv_file, transform)
         # data_aug_prime = prepare_data(data_dir, csv_file, transform)
-        train_aug, val_aug = torch.utils.data.random_split(data_aug, [train_size, val_size], generator=generator)
-        # train_aug_prime, val_aug_prime = torch.utils.data.random_split(data_aug_prime, [train_size, val_size], generator=generator)
-
+        
         # then turn the subset for training back into a dataset
         train_dataset = SubsetAsDataset(train_dataset)
         train_aug = SubsetAsDataset(train_aug)
@@ -338,40 +333,32 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
 
 # Function to parse command-line arguments
-def parse_args():
+"""def parse_args():
     parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
     parser.add_argument('--data_dir', type=str, required=True, help="Directory where the data is stored.")
     parser.add_argument('--csv_file', type=str, required=True, help="Path to the CSV file containing dataset information.")
-    return parser.parse_args()
+    return parser.parse_args()"""
 
 def main():
     # Parse command-line arguments
-    args = parse_args()
+    #args = parse_args()
     
     # Extract the data directory and CSV file path
-    data_dir = args.data_dir
-    csv_file = args.csv_file
+    train_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/training"
+    val_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/training"
+    csv_file = "../../duke/public/rsna_challenge/dcom_data/train.csv"
     
 
 
-    # Check if the data directory exists
-    if not os.path.exists(data_dir):
-        print(f"Error: The data directory '{data_dir}' does not exist.")
-        return
-    
-    # Check if the CSV file exists
-    if not os.path.exists(csv_file):
-        print(f"Error: The CSV file '{csv_file}' does not exist.")
-        return
     
    # Specify the GPU index (0, 1, 2, ...)
-    gpu_id = 1  # Change this to the desired GPU index
+    
     device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=60, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=8, lr=1e-4, epochs=60, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":
