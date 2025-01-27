@@ -60,8 +60,11 @@ def prepare_data(data_dir, csv_file, transform):
     for subject in os.listdir(data_dir):
         print(subject)
         subject_dir = os.path.join(data_dir, subject, 'anat')
+        if counter >15: 
+            break 
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
+                
                 
                 if '_patch.nii.gz' in file and 'foramen' not in file:
                     image_path = os.path.join(subject_dir, file)
@@ -252,8 +255,8 @@ def main():
         return
     
    # Specify the GPU index (0, 1, 2, ...)
-    gpu_id = 0  # Change this to the desired GPU index
-    device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
+    gpu_id = 1 # Change this to the desired GPU index
+    device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
     
 
