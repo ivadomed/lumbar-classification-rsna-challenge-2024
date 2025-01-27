@@ -121,19 +121,7 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
                         t2_image_data = t2_image.get_fdata()
 
                         if t1_image_data.ndim == 3 and t2_image_data.ndim == 3 :
-                            # resample the image
-                            #image_affine = image.affine
-                            #image_header = image.header
-                            #image_res = nib.Nifti1Image(image_data, image_affine, header=image_header)
-                            #image = resample(image_res, (4.5,0.6,0.6))
-                            #image_data = image.get_fdata()
-
-                            #pixdim = t1_image.header.get_zooms()  # Get the voxel dimensions
-
-                            # Print out the resolution of the image
-                            #print(f"Subject: {subject}, File: {file}, Image Shape: {image_data.shape}, Voxel Size (mm): {pixdim}")
-                                                
-                        
+                            
                         
                             subject_id = (subject.replace('sub-', ''))
                             if 'left' in file:
@@ -158,13 +146,13 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
 
 
     print(f"Nombre de données chargées: {counter}")
-    proportions = [1/(i/counter) for i in proportions]
+    """proportions = [1/(i/counter) for i in proportions]
     print(proportions)
-    return Dataset(data=data, transform=transform), proportions
+    """
+    return Dataset(data=data, transform=transform)
 
 def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
     # Préparer les données
-    
     transform=get_transforms()
     train_dataset = prepare_data(train_dir, csv_file, transform)
     val_dataset = prepare_data(val_dir, csv_file, transform)
@@ -177,17 +165,19 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
     # data augmentation if augment=True
     if augment:
         transform=get_transforms('random')
-        train_aug, proportions = prepare_data(train_dir, csv_file, transform)
+        train_aug = prepare_data(train_dir, csv_file, transform)
         # data_aug_prime = prepare_data(data_dir, csv_file, transform)
         
         # then turn the subset for training back into a dataset
-        train_dataset = SubsetAsDataset(train_dataset)
+        """train_dataset = SubsetAsDataset(train_dataset)
         train_aug = SubsetAsDataset(train_aug)
-        #train_aug_prime = SubsetAsDataset(train_aug_prime)
+        """#train_aug_prime = SubsetAsDataset(train_aug_prime)
 
         # then concatenate the two datasets
         train_dataset = ConcatDataset([train_dataset, train_aug])
         # train_dataset = ConcatDataset([train_dataset, train_aug, train_aug_prime])
+
+        
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
@@ -228,6 +218,8 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
     train_losses = []
     val_losses = []
     best_val_loss = float('inf') 
+
+    is_first = True
 
     # Entraînement
     for epoch in range(epochs):
@@ -295,6 +287,12 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
             # Sauvegarde du modèle
             torch.save(model.state_dict(), f"{model_name}.pth")
 
+        if train_losses[-1] < val_losses[-1] and is_first : 
+            print(f"Model starts overfitting. Saving model...")
+            
+            # Sauvegarde du modèle
+            torch.save(model.state_dict(), f"overfit_{model_name}.pth")
+
     print("Entraînement terminé.")
 
 
@@ -345,7 +343,7 @@ def main():
     
     # Extract the data directory and CSV file path
     train_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/training"
-    val_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/training"
+    val_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/validation"
     csv_file = "../../duke/public/rsna_challenge/dcom_data/train.csv"
     
 
