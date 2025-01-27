@@ -65,7 +65,7 @@ def get_transforms(mode='basic'):
             SpatialPadd(keys=['T1','T2'], spatial_size=(10, 70, 70)),  # Padding pour atteindre une taille fixe
             RandSpatialCropd(keys=['T1','T2'], roi_size=(10, 70, 70), random_size=False),  # Crop pour obtenir une taille fixe
             ResizeWithPadOrCropd(keys=['T1', 'T2'], spatial_size=(10, 70, 70)),
-            ScaleIntensityd(keys=['T1','T2']),  # Normalisation de l'intensité pour l'image
+            RandScaleIntensityd(keys=['T1','T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
             NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
             ConcatItemsd(keys=["T1","T2"], name="combinaison"),
             ToTensord(keys=["combinaison"]) 
@@ -163,7 +163,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
      
 
     # data augmentation if augment=True
-    if augment:
+    for i in range(3):
         transform=get_transforms('random')
         train_aug = prepare_data(train_dir, csv_file, transform)
         # data_aug_prime = prepare_data(data_dir, csv_file, transform)
