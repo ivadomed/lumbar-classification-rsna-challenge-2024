@@ -6,4 +6,5 @@ model*
 *.pth
 20*
 models/
+**/wandb/
 
