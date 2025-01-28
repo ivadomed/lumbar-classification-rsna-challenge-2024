@@ -25,6 +25,8 @@ import argparse
 import torchio as tio
 from image import Image
 import torch.nn as nn
+import wandb
+import pytorch_lightning as pl
 
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
@@ -46,7 +48,7 @@ def get_transforms(mode='basic'):
     if mode == 'basic':
         common_transforms = Compose([
             LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            Spacingd(keys=['T1','T2'], pixdim=(2,4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
+            Spacingd(keys=['T1','T2'], pixdim=(2.4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
             SpatialPadd(keys=['T1','T2'], spatial_size=(10, 70, 70)),  # Padding pour atteindre une taille fixe
             CenterSpatialCropd(keys=['T1','T2'], roi_size=(10, 70, 70)),  # Crop pour obtenir une taille fixe
@@ -59,7 +61,7 @@ def get_transforms(mode='basic'):
         # same but changing steps as random steps
         common_transforms = Compose([
             LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            Spacingd(keys=['T1','T2'], pixdim=(2,4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
+            Spacingd(keys=['T1','T2'], pixdim=(2.4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
             RandRotated(keys=['T1','T2'], prob=1, range_y=0.1),  # Rotation aléatoire
             SpatialPadd(keys=['T1','T2'], spatial_size=(10, 70, 70)),  # Padding pour atteindre une taille fixe
@@ -73,6 +75,32 @@ def get_transforms(mode='basic'):
     return common_transforms
     
     
+def plot_slices(image):
+    """
+    Plot the image, ground truth and prediction of the mid-sagittal axial slice
+    The orientaion is assumed to RPI
+    """
+
+    # bring everything to numpy 
+    ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
+    image = image.float().numpy()
+    
+
+    print(image.shape)
+    mid_sagittal = image.shape[1]//2
+    # plot X slices before and after the mid-sagittal slice in a grid
+    fig, axs = plt.subplots(2, 6, figsize=(10, 30))
+    fig.suptitle('Original Image')
+    for i in range(6):
+        axs[0, i].imshow(image[0,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[0, i].axis('off') 
+        axs[1, i].imshow(image[1,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[0, i].axis('off') 
+        
+  
+    
+    plt.tight_layout()
+    fig.show()
+    
+    return fig
 
 
 def prepare_data(data_dir, csv_file, transform, side='left'):
@@ -86,8 +114,8 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
     
     for subject in os.listdir(data_dir):
         
-        #if counter> 15 :
-        #    break
+        if counter//3> 15 :
+            break
        
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
@@ -163,7 +191,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
      
 
     # data augmentation if augment=True
-    for i in range(3):
+    for i in range(1):
         transform=get_transforms('random')
         train_aug = prepare_data(train_dir, csv_file, transform)
         # data_aug_prime = prepare_data(data_dir, csv_file, transform)
@@ -229,10 +257,22 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
         correct_predictions = 0
         total_predictions = 0
 
-
+        counter = 0 
 
         for batch in tqdm(train_loader):
             inputs = batch["combinaison"].cuda()
+            if counter%10 == 0 : 
+                train_image= inputs[0].detach().cpu().squeeze()
+                
+
+                fig = plot_slices(image=train_image,
+                            
+                                    )
+
+                wandb.log({"training images": wandb.Image(fig)})
+                plt.close(fig)
+
+
             labels = batch["label"].cuda()
             
             # Forward pass
@@ -287,11 +327,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
             # Sauvegarde du modèle
             torch.save(model.state_dict(), f"{model_name}.pth")
 
-        if train_losses[-1] < val_losses[-1] and is_first : 
-            print(f"Model starts overfitting. Saving model...")
-            
-            # Sauvegarde du modèle
-            torch.save(model.state_dict(), f"overfit_{model_name}.pth")
+        
 
     print("Entraînement terminé.")
 
@@ -340,7 +376,21 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
 def main():
     # Parse command-line arguments
     #args = parse_args()
-    
+    config = None
+    output_path = "output_path"
+    wandb.init(project=f'nfn', config=config, save_code=True, dir=output_path)
+
+
+    exp_logger = pl.loggers.WandbLogger(
+                        name="test",
+                        save_dir=output_path,
+                        group="rsna-lumbar-classification",
+                        log_model=True, # save best model using checkpoint callback
+                        config=config)
+
+    # Saving training script to wandb
+    wandb.save(config)
+
     # Extract the data directory and CSV file path
     train_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/training"
     val_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/validation"
@@ -358,6 +408,8 @@ def main():
 
     train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=8, lr=1e-4, epochs=60, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
+    wandb.finish()  
+
 
 if __name__ == "__main__":
     main()
