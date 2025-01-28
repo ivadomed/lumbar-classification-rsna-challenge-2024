@@ -12,7 +12,7 @@ from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotated,
-    Spacingd, RandSpatialCropd, RandBiasFieldd
+    Spacingd, RandSpatialCropd, RandBiasFieldd, CutMix
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -74,8 +74,9 @@ def get_transforms(mode='basic'):
         ])
     
     return common_transforms
-    
 
+cutmix = CutMix(batch_size=8, alpha=1.0)
+    
 
 def prepare_data(data_dir, csv_file, transform):
     data = []
@@ -87,7 +88,6 @@ def prepare_data(data_dir, csv_file, transform):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
-        print(subject)
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
@@ -169,7 +169,8 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'augment': augment,
         'train_set_size': len(data_train),
         'val_set_size': len(data_val),
-        'randbiaisfield prob and coeff': (0.4, 0.3)
+        'randbiaisfield prob and coeff': (0.4, 0.3),
+        'cutmix': (0.5, 1)
     }
     model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}_3times"
 
@@ -200,6 +201,9 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             
             inputs = batch["image"].cuda()
             labels = batch["label"].cuda()
+
+            if torch.rand(1).item() < 0.2:
+                inputs, labels = cutmix(inputs, labels)
             
             # Forward pass
             optimizer.zero_grad()
@@ -218,28 +222,39 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
             # saving first images
             
-            if epoch == 0 and i < 4 :  # Uniquement pour la première époque
-                for i, img in enumerate(inputs):
-                    # Convertir le tenseur en tableau numpy
-                    img_numpy = img.numpy().squeeze()
+            # Saving first images (W&B log)
+            if epoch == 0 and i < 4:  # Uniquement pour la première époque, premiers batches
+                for j, img in enumerate(inputs):
+                    print(f"epoch {epoch}, batch {i}, image {j}")
 
-                    # Créer un fichier NIfTI
-                    nifti_path = os.path.join(save_dir, f"epoch{epoch}_batch_0_image{i}.nii.gz")
-                    nifti_img = nib.Nifti1Image(img_numpy, affine=np.eye(4))
-                    nib.save(nifti_img, nifti_path)
+                    # Convertir l'image en numpy pour W&B
+                    img_numpy = img.cpu().numpy().squeeze()
+                    shp = img_numpy.shape
+                    mid_slice = shp[2] // 2
+                    img_numpy = img_numpy[:, :, mid_slice:mid_slice+1].squeeze()
 
-                    # Logger avec W&B
+                    
+                    # Log image dans W&B
+                    wandb_img = wandb.Image(
+                        img_numpy, 
+                        caption=f"Epoch {epoch}, Batch {i}, Image {j}"
+                    )
+                    
                     wandb.log({
+                        f"Logged_Image_{i}_{j}": wandb_img,
                         "epoch": epoch,
-                        "batch": 0,
-                        "image_index": i,
-                        "saved_image": wandb.Artifact(nifti_path, type="nifti"),
+                        "batch": i,
+                        "loss": loss.item(),
                     })
 
-                i += 1
+            i += 1
 
-            # Logger d'autres métriques sur W&B
-            wandb.log({"epoch": epoch, "batch": i-1, "loss": loss.item()})
+        # Log des métriques pour chaque epoch
+        wandb.log({
+            "epoch_loss": running_loss / len(train_loader),
+            "epoch_accuracy": correct_predictions / total_predictions,
+            "epoch": epoch + 1
+        })
 
 
 
@@ -350,7 +365,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=50, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":

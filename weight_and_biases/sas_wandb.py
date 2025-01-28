@@ -44,7 +44,7 @@ def get_transforms(mode='basic', side='left'):
         Flipd(keys=['image'], spatial_axis=0)])
 
     second_transforms_basic = Compose([
-        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, 200, 200)),  # crop pour récupérer la gauche
+        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, 100, 6)),  # crop pour récupérer la gauche
         SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)),  # Padding pour atteindre une taille fixe
         CenterSpatialCropd(keys=['image'], roi_size=(60, 80, 6)),  # Crop pour obtenir une taille fixe
         ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
@@ -54,7 +54,7 @@ def get_transforms(mode='basic', side='left'):
     
     second_transforms_random = Compose([
         RandRotated(keys=['image'], prob=1, range_x=0.2),
-        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, -1, -1)),  # crop pour récupérer la gauche
+        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, 100, 6)),  # crop pour récupérer la gauche
         RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)), # Random bias field
         SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)),  # Padding pour atteindre une taille fixe
         RandSpatialCropd(keys=['image'], roi_size=(60, 80, 6), random_size=False),  # Crop pour obtenir une taille fixe
@@ -82,8 +82,6 @@ def prepare_data(data_dir, csv_file, transform_left, transform_right):
     data_left = []
     labels_df = pd.read_csv(csv_file)
     
-    max = 0
-
     counter = 0
     counter_invalid = 0
 
@@ -91,44 +89,41 @@ def prepare_data(data_dir, csv_file, transform_left, transform_right):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
-        if max < 64:
-            print(subject)
-            subject_dir = os.path.join(data_dir, subject, 'anat')
-            #if counter>10:
-            #    break
-            if os.path.isdir(subject_dir):
-                for file in os.listdir(subject_dir):
+        subject_dir = os.path.join(data_dir, subject, 'anat')
+
+        if os.path.isdir(subject_dir):
+            for file in os.listdir(subject_dir):
+                
+                if '_patch.nii.gz' in file and 'foramen' not in file:
+                    image_path = os.path.join(subject_dir, file)
                     
-                    if '_patch.nii.gz' in file and 'foramen' not in file:
-                        image_path = os.path.join(subject_dir, file)
-                        
-                        parts = image_path.split('_')
-                        disk_level = f"{parts[-3]}_{parts[-2]}"
+                    parts = image_path.split('_')
+                    disk_level = f"{parts[-3]}_{parts[-2]}"
 
-                        if os.path.exists(image_path):
-                            # Vérifier la forme de l'image
-                            image_data = nib.load(image_path).get_fdata()
-                            if image_data.ndim == 3:
-                                subject_id = (subject.replace('sub-', ''))
+                    if os.path.exists(image_path):
+                        # Vérifier la forme de l'image
+                        image_data = nib.load(image_path).get_fdata()
+                        if image_data.ndim == 3:
+                            subject_id = (subject.replace('sub-', ''))
 
-                                label_column_sasl = f'left_subarticular_stenosis_{disk_level.lower()}'
-                                label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
-                                # Obtenir l'étiquette brute
+                            label_column_sasl = f'left_subarticular_stenosis_{disk_level.lower()}'
+                            label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
+                            # Obtenir l'étiquette brute
 
-                                label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
-                                label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
-                                
-                                # Convertir l'étiquette textuelle en valeur numérique
-                                label_numeric_sasr = text2int.get(label_sasr, -1)
-                                label_numeric_sasl = text2int.get(label_sasl, -1)
-                                if label_numeric_sasr in [0, 1, 2] and label_numeric_sasl in [0, 1, 2]:
-                                    data_right.append({"image": image_path, "label": label_numeric_sasr})
-                                    data_left.append({"image": image_path, "label": label_numeric_sasl})
-                                    counter += 2
-                                else:
-                                    counter_invalid += 1
-                                    print(f"Étiquette {label_sasr} ou {label_sasl} invalide pour {subject_id} à {disk_level}")
-            max += 1
+                            label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
+                            label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
+                            
+                            # Convertir l'étiquette textuelle en valeur numérique
+                            label_numeric_sasr = text2int.get(label_sasr, -1)
+                            label_numeric_sasl = text2int.get(label_sasl, -1)
+                            if label_numeric_sasr in [0, 1, 2] and label_numeric_sasl in [0, 1, 2]:
+                                data_right.append({"image": image_path, "label": label_numeric_sasr})
+                                data_left.append({"image": image_path, "label": label_numeric_sasl})
+                                counter += 2
+                            else:
+                                counter_invalid += 1
+                                print(f"Étiquette {label_sasr} ou {label_sasl} invalide pour {subject_id} à {disk_level}")
+
 
     print(f"Nombre de données chargées: {counter}")
     print(f"Nombre de données invalides: {counter_invalid}")
@@ -448,7 +443,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=2, val_split=0.25, layers=[3, 4, 6, 3], augment=False)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":
