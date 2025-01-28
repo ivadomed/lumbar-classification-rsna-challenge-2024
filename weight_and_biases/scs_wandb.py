@@ -12,7 +12,7 @@ from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotated,
-    Spacingd, RandSpatialCropd, RandBiasFieldd, CutMix
+    Spacingd, RandSpatialCropd, RandBiasFieldd, CutMixd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -74,9 +74,8 @@ def get_transforms(mode='basic'):
         ])
     
     return common_transforms
-
-cutmix = CutMix(batch_size=8, alpha=1.0)
     
+cutmix =  CutMixd(keys=['image', 'label'], batch_size=8, alpha=1.0)  # CutMix augmentation
 
 def prepare_data(data_dir, csv_file, transform):
     data = []
@@ -88,32 +87,33 @@ def prepare_data(data_dir, csv_file, transform):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
-        subject_dir = os.path.join(data_dir, subject, 'anat')
-        if os.path.isdir(subject_dir):
-            for file in os.listdir(subject_dir):
-                
-                if '_patch.nii.gz' in file and 'foramen' not in file:
-                    image_path = os.path.join(subject_dir, file)
+        if counter < 64:
+            subject_dir = os.path.join(data_dir, subject, 'anat')
+            if os.path.isdir(subject_dir):
+                for file in os.listdir(subject_dir):
                     
-                    parts = image_path.split('_')
-                    disk_level = f"{parts[-3]}_{parts[-2]}"
+                    if '_patch.nii.gz' in file and 'foramen' not in file:
+                        image_path = os.path.join(subject_dir, file)
+                        
+                        parts = image_path.split('_')
+                        disk_level = f"{parts[-3]}_{parts[-2]}"
 
-                    if os.path.exists(image_path):
-                        # Vérifier la forme de l'image
-                        image_data = nib.load(image_path).get_fdata()
-                        if image_data.ndim == 3:
-                            subject_id = (subject.replace('sub-', ''))
-                            
-                            label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
-                            # Obtenir l'étiquette brute
-                            
-                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
-                            
-                            # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric = text2int.get(label, -1)
-                            if label_numeric != -1:
-                                counter += 1
-                                data.append({"image": image_path, "label": label_numeric})
+                        if os.path.exists(image_path):
+                            # Vérifier la forme de l'image
+                            image_data = nib.load(image_path).get_fdata()
+                            if image_data.ndim == 3:
+                                subject_id = (subject.replace('sub-', ''))
+                                
+                                label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
+                                # Obtenir l'étiquette brute
+                                
+                                label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                                
+                                # Convertir l'étiquette textuelle en valeur numérique
+                                label_numeric = text2int.get(label, -1)
+                                if label_numeric != -1:
+                                    counter += 1
+                                    data.append({"image": image_path, "label": label_numeric})
 
 
     print(f"Nombre de données chargées: {counter}")
@@ -198,12 +198,16 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
         i = 0
         for batch in tqdm(train_loader):
+
+            if np.random.rand() < 0.5:
+                print("cutmix")
+                print(type(batch))
+                print(type(cutmix))
+                batch = cutmix(batch)
+
             
             inputs = batch["image"].cuda()
             labels = batch["label"].cuda()
-
-            if torch.rand(1).item() < 0.2:
-                inputs, labels = cutmix(inputs, labels)
             
             # Forward pass
             optimizer.zero_grad()
