@@ -27,17 +27,6 @@ import seaborn as sns
 import numpy as np
 import nibabel as nib
 import argparse  
-
-class SubsetAsDataset(Dataset):
-    def __init__(self, subset):
-        self.subset = subset
-    
-    def __len__(self):
-        return len(self.subset)
-    
-    def __getitem__(self, idx):
-        return self.subset[idx]
-
 from monai.data import Dataset, DataLoader
 
 # weights of the loss
