@@ -6,7 +6,9 @@ import numpy as np
 
 # functions : 
 def cutmix(batch, alpha):
-    new_batch = batch.copy()
+    new_images = torch.zeros_like(batch["image"])
+    new_labels = torch.zeros_like(batch["label"])
+
     for i in range(len(batch["image"])):
 
         # Randomly choose another image from the batch
@@ -19,13 +21,17 @@ def cutmix(batch, alpha):
         mask = torch.zeros_like(batch["image"][i])
         mask[:, :int(batch["image"].shape[2] * lam), :] = 1 # mask
 
-        new_batch["image"][i] = batch["image"][i] * mask + batch["image"][j] * (1 - mask)
-        new_batch["label"][i] = lam * batch["label"][i] + (1 - lam) * batch["label"][j]
+        new_images[i] = batch["image"][i] * mask + batch["image"][j] * (1 - mask)
+        new_labels[i] = lam * batch["label"][i] + (1 - lam) * batch["label"][j]
+    
+    new_batch = {"image": new_images, "label": new_labels}
 
     return new_batch
 
 def mixup(batch, alpha):
-    new_batch = batch.copy()
+    new_images = torch.zeros_like(batch["image"])
+    new_labels = torch.zeros_like(batch["label"])
+
     for i in range(len(batch["image"])):
 
         # Randomly choose another image from the batch
@@ -35,8 +41,10 @@ def mixup(batch, alpha):
 
         # Mixup
         lam = np.random.beta(alpha, alpha)
-        new_batch["image"][i] = lam * batch["image"][i] + (1 - lam) * batch["image"][j]
-        new_batch["label"][i] = lam * batch["label"][i] + (1 - lam) * batch["label"][j]
+        new_images[i] = lam * batch["image"][i] + (1 - lam) * batch["image"][j]
+        new_labels[i] = lam * batch["label"][i] + (1 - lam) * batch["label"][j]
+
+    new_batch = {"image": new_images, "label": new_labels}
 
     return new_batch
 

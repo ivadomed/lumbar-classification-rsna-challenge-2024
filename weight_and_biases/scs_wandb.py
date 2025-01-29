@@ -86,33 +86,32 @@ def prepare_data(data_dir, csv_file, transform):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
-        if counter < 64:
-            subject_dir = os.path.join(data_dir, subject, 'anat')
-            if os.path.isdir(subject_dir):
-                for file in os.listdir(subject_dir):
+        subject_dir = os.path.join(data_dir, subject, 'anat')
+        if os.path.isdir(subject_dir):
+            for file in os.listdir(subject_dir):
+                
+                if '_patch.nii.gz' in file and 'foramen' not in file:
+                    image_path = os.path.join(subject_dir, file)
                     
-                    if '_patch.nii.gz' in file and 'foramen' not in file:
-                        image_path = os.path.join(subject_dir, file)
-                        
-                        parts = image_path.split('_')
-                        disk_level = f"{parts[-3]}_{parts[-2]}"
+                    parts = image_path.split('_')
+                    disk_level = f"{parts[-3]}_{parts[-2]}"
 
-                        if os.path.exists(image_path):
-                            # Vérifier la forme de l'image
-                            image_data = nib.load(image_path).get_fdata()
-                            if image_data.ndim == 3:
-                                subject_id = (subject.replace('sub-', ''))
-                                
-                                label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
-                                # Obtenir l'étiquette brute
-                                
-                                label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
-                                
-                                # Convertir l'étiquette textuelle en valeur numérique
-                                label_numeric = text2int.get(label, -1)
-                                if label_numeric != -1:
-                                    counter += 1
-                                    data.append({"image": image_path, "label": label_numeric})
+                    if os.path.exists(image_path):
+                        # Vérifier la forme de l'image
+                        image_data = nib.load(image_path).get_fdata()
+                        if image_data.ndim == 3:
+                            subject_id = (subject.replace('sub-', ''))
+                            
+                            label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
+                            # Obtenir l'étiquette brute
+                            
+                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                            
+                            # Convertir l'étiquette textuelle en valeur numérique
+                            label_numeric = text2int.get(label, -1)
+                            if label_numeric != -1:
+                                counter += 1
+                                data.append({"image": image_path, "label": label_numeric})
 
 
     print(f"Nombre de données chargées: {counter}")
@@ -197,10 +196,9 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
         i = 0
         for batch in tqdm(train_loader):
-            print(batch["image"].shape)
 
-            if np.random.rand() < 0.5:
-                batch = cut_mix_up.cutmixup(batch, 1)
+            if np.random.rand() < 0.3:
+                batch = cut_mix_up.cutmix(batch, 1)
             
             inputs = batch["image"].cuda()
             labels = batch["label"].cuda()
@@ -223,7 +221,8 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             # saving first images
             
             # Saving first images (W&B log)
-            if epoch == 0 and i < 4:  # Uniquement pour la première époque, premiers batches
+            if epoch == 0 and i < 8:  # Uniquement pour la première époque, premiers batches
+                print(f"Saving images for batch {i}")
                 for j, img in enumerate(inputs):
                     train_image= img.detach().cpu().squeeze()
                 
@@ -328,8 +327,6 @@ def plot_slices(image):
     ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
     image = image.float().numpy()
     
-
-    print(image.shape)
     mid_axial = image.shape[2]//2
     # plot X slices before and after the mid-sagittal slice in a grid
     fig, axs = plt.subplots(1, 6, figsize=(15, 3))
@@ -377,7 +374,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=False)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":
