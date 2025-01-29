@@ -86,14 +86,13 @@ def plot_slices(image):
     image = image.float().numpy()
     
 
-    print(image.shape)
     mid_sagittal = image.shape[1]//2
     # plot X slices before and after the mid-sagittal slice in a grid
     fig, axs = plt.subplots(2, 6, figsize=(10, 30))
     fig.suptitle('Original Image')
     for i in range(6):
         axs[0, i].imshow(image[0,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[0, i].axis('off') 
-        axs[1, i].imshow(image[1,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[0, i].axis('off') 
+        axs[1, i].imshow(image[1,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[1, i].axis('off') 
         
   
     
@@ -135,12 +134,12 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
                             None
                         else :
                             if disk_level in t2_file and 'foramen' in t2_file and 'T2w' in t2_file:
-                                t2_path = os.path.join(subject_dir, file)
+                                t2_path = os.path.join(subject_dir,  t2_file)
                                 
                                 
 
                     if os.path.exists(t1_path):
-                        
+
                         # Vérifier la forme de l'image
                         t1_image = nib.load(t1_path)
                         t2_image = nib.load(t2_path)
@@ -170,6 +169,7 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
                             if label_numeric != -1:
                                 proportions[label_numeric] += 1 
                                 counter += 1
+                                
                                 data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
 
 
@@ -177,6 +177,7 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
     """proportions = [1/(i/counter) for i in proportions]
     print(proportions)
     """
+    print(data)
     return Dataset(data=data, transform=transform)
 
 def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
@@ -261,7 +262,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
 
         for batch in tqdm(train_loader):
             inputs = batch["combinaison"].cuda()
-            if counter%10 == 0 : 
+            if counter%5 == 0 : 
                 train_image= inputs[0].detach().cpu().squeeze()
                 
 
@@ -289,9 +290,10 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
             _, predicted = torch.max(outputs, 1)
             correct_predictions += (predicted == labels).sum().item()
             total_predictions += labels.size(0)
-
+            counter +=1 
 
         train_losses.append(running_loss / len(train_loader))
+
         print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
 
         # Validation
@@ -320,12 +322,22 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
         val_losses.append(val_loss / len(val_loader))
         print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {100 * correct_predictions / total_predictions}%")
 
+        
+
         if val_losses[-1] < best_val_loss:
             print(f"Validation loss improved from {best_val_loss:.4f} to {val_losses[-1]:.4f}. Saving model...")
             best_val_loss = val_losses[-1]
             
             # Sauvegarde du modèle
             torch.save(model.state_dict(), f"{model_name}.pth")
+
+        wandb_logs = {
+                "train_loss": train_losses[-1],
+                "val_loss": val_losses[-1]
+                
+            }
+    
+        wandb_logs.clear()
 
         
 
@@ -406,7 +418,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=8, lr=1e-4, epochs=60, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=60, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
     wandb.finish()  
 
