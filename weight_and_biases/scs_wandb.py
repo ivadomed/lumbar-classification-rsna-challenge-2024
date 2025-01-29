@@ -29,6 +29,7 @@ import nibabel as nib
 import argparse  
 import wandb
 from monai.data import Dataset, DataLoader
+import cut_mix_up
 
 # weights of the loss
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
@@ -74,8 +75,6 @@ def get_transforms(mode='basic'):
         ])
     
     return common_transforms
-    
-cutmix =  CutMixd(keys=['image', 'label'], batch_size=8, alpha=1.0)  # CutMix augmentation
 
 def prepare_data(data_dir, csv_file, transform):
     data = []
@@ -198,13 +197,10 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
         i = 0
         for batch in tqdm(train_loader):
+            print(batch["image"].shape)
 
             if np.random.rand() < 0.5:
-                print("cutmix")
-                print(type(batch))
-                print(type(cutmix))
-                batch = cutmix(batch)
-
+                batch = cut_mix_up.cutmixup(batch, 1)
             
             inputs = batch["image"].cuda()
             labels = batch["label"].cuda()
@@ -229,27 +225,15 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             # Saving first images (W&B log)
             if epoch == 0 and i < 4:  # Uniquement pour la première époque, premiers batches
                 for j, img in enumerate(inputs):
-                    print(f"epoch {epoch}, batch {i}, image {j}")
+                    train_image= img.detach().cpu().squeeze()
+                
 
-                    # Convertir l'image en numpy pour W&B
-                    img_numpy = img.cpu().numpy().squeeze()
-                    shp = img_numpy.shape
-                    mid_slice = shp[2] // 2
-                    img_numpy = img_numpy[:, :, mid_slice:mid_slice+1].squeeze()
+                    fig = plot_slices(image=train_image,
+                                
+                                        )
 
-                    
-                    # Log image dans W&B
-                    wandb_img = wandb.Image(
-                        img_numpy, 
-                        caption=f"Epoch {epoch}, Batch {i}, Image {j}"
-                    )
-                    
-                    wandb.log({
-                        f"Logged_Image_{i}_{j}": wandb_img,
-                        "epoch": epoch,
-                        "batch": i,
-                        "loss": loss.item(),
-                    })
+                    wandb.log({"training images": wandb.Image(fig)})
+                    plt.close(fig)
 
             i += 1
 
@@ -334,7 +318,31 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
     wandb.finish()
  
+def plot_slices(image):
+    """
+    Plot the image, ground truth and prediction of the mid-sagittal axial slice
+    The orientaion is assumed to RPI
+    """
+
+    # bring everything to numpy 
+    ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
+    image = image.float().numpy()
     
+
+    print(image.shape)
+    mid_axial = image.shape[2]//2
+    # plot X slices before and after the mid-sagittal slice in a grid
+    fig, axs = plt.subplots(1, 6, figsize=(15, 3))
+    fig.suptitle('Axial Slices')
+
+    for i in range(6):
+        axs[i].imshow(image[:,:, mid_axial-3+i].T, cmap='gray')
+        axs[i].axis('off')
+
+    plt.tight_layout()
+    # fig.show()
+    
+    return fig   
 
 
 # Function to parse command-line arguments
@@ -369,7 +377,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=False)
    
 
 if __name__ == "__main__":
