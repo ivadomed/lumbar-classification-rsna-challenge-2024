@@ -1,0 +1,48 @@
+/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py:81: DtypeWarning: Columns (3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25) have mixed types. Specify dtype option on import or set low_memory=False.
+  labels_df = pd.read_csv(csv_file)
+Nombre de données chargées: 65
+/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py:81: DtypeWarning: Columns (3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25) have mixed types. Specify dtype option on import or set low_memory=False.
+  labels_df = pd.read_csv(csv_file)
+Nombre de données chargées: 65
+Epoch 1/20
+ 89%|██████████████████████████████████████████████████████████████████████████████████████████▋           | 8/9 [00:11<00:01,  1.48s/it]
+Saving images for batch 0
+Saving images for batch 1
+Saving images for batch 2
+Saving images for batch 3
+Traceback (most recent call last):
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 382, in <module>
+    main()
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 378, in main
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=False)
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 202, in train_and_evaluate_model
+    batch = cut_mix_up.cutmixup(batch, 1)
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/cut_mix_up.py", line 46, in cutmixup
+    return cutmix(batch, alpha)
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/cut_mix_up.py", line 15, in cutmix
+    j = np.random.randint(len(batch["image"]))
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/_tensor.py", line 1019, in __len__
+    return handle_torch_function(Tensor.__len__, (self,), self)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/overrides.py", line 1647, in handle_torch_function
+    result = torch_func_method(public_api, types, args, kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/data/meta_tensor.py", line 282, in __torch_function__
+    ret = super().__torch_function__(func, types, args, kwargs)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 382, in <module>
+    main()
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 378, in main
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=False)
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 202, in train_and_evaluate_model
+    batch = cut_mix_up.cutmixup(batch, 1)
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/cut_mix_up.py", line 46, in cutmixup
+    return cutmix(batch, alpha)
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/cut_mix_up.py", line 15, in cutmix
+    j = np.random.randint(len(batch["image"]))
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/_tensor.py", line 1019, in __len__
+    return handle_torch_function(Tensor.__len__, (self,), self)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/overrides.py", line 1647, in handle_torch_function
+    result = torch_func_method(public_api, types, args, kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/data/meta_tensor.py", line 282, in __torch_function__
+    ret = super().__torch_function__(func, types, args, kwargs)
+KeyboardInterrupt

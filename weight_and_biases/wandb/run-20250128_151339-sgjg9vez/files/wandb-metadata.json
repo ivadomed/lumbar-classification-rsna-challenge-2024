@@ -1,0 +1,66 @@
+{
+  "os": "Linux-6.8.0-51-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.9.18",
+  "startedAt": "2025-01-28T20:13:39.635647Z",
+  "args": [
+    "--data_dir",
+    "../../../duke/public/rsna_challenge/20250102nii_data_splits",
+    "--csv_file",
+    "../../../duke/public/rsna_challenge/dcom_data/train.csv"
+  ],
+  "program": "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py",
+  "codePath": "weight_and_biases/scs_wandb.py",
+  "git": {
+    "remote": "git@github.com:ivadomed/lumbar-classification-rsna-challenge-2024.git",
+    "commit": "bc0726e1871147b49eb695c9c1627d2a7e88ec7c"
+  },
+  "email": "abel.salmona@gmail.com",
+  "root": "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases",
+  "host": "romane.neuro.polymtl.ca",
+  "executable": "/usr/local/miniforge3/bin/python",
+  "codePathLocal": "scs_wandb.py",
+  "cpu_count": 32,
+  "cpu_count_logical": 64,
+  "gpu": "NVIDIA RTX A6000",
+  "gpu_count": 4,
+  "disk": {
+    "/": {
+      "total": "5193236480",
+      "used": "1290194944"
+    }
+  },
+  "memory": {
+    "total": "540685570048"
+  },
+  "cpu": {
+    "count": 32,
+    "countLogical": 64
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA RTX A6000",
+      "memoryTotal": "51527024640",
+      "cudaCores": 10752,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA RTX A6000",
+      "memoryTotal": "51527024640",
+      "cudaCores": 10752,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA RTX A6000",
+      "memoryTotal": "51527024640",
+      "cudaCores": 10752,
+      "architecture": "Ampere"
+    },
+    {
+      "name": "NVIDIA RTX A6000",
+      "memoryTotal": "51527024640",
+      "cudaCores": 10752,
+      "architecture": "Ampere"
+    }
+  ],
+  "cudaVersion": "12.2"
+}

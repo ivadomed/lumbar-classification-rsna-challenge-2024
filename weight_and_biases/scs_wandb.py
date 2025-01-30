@@ -16,9 +16,10 @@ from monai.transforms import (
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
-from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
+from torch.utils.data import DataLoader, Dataset, ConcatDataset
 import torch.optim as optim
 from torch.nn import CrossEntropyLoss
+import torch.nn.functional as F
 from monai.transforms import Compose
 from monai.data import Dataset
 from sklearn.metrics import confusion_matrix
@@ -85,11 +86,12 @@ def prepare_data(data_dir, csv_file, transform):
     # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
+
     for subject in os.listdir(data_dir):
+
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
-                
                 if '_patch.nii.gz' in file and 'foramen' not in file:
                     image_path = os.path.join(subject_dir, file)
                     
@@ -170,7 +172,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'randbiaisfield prob and coeff': (0.4, 0.3),
         'cutmix': (0.5, 1)
     }
-    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}_3times"
+    model_name = f"scs_cut_mix_up_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}_3times"
 
     
     model = model.to(device)
@@ -197,9 +199,10 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         i = 0
         for batch in tqdm(train_loader):
 
-            if np.random.rand() < 0.3:
-                batch = cut_mix_up.cutmix(batch, 1)
-            
+            batch["label"] = F.one_hot(batch["label"], num_classes=3).float()
+            if np.random.rand() < 0.4:
+                batch = cut_mix_up.cutmixup(batch, 1)
+            # batch = cut_mix_up.cut_if_unhealthy(batch, 1)
             inputs = batch["image"].cuda()
             labels = batch["label"].cuda()
             
@@ -215,6 +218,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             # Stats
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
+            _, labels = torch.max(labels, 1)
             correct_predictions += (predicted == labels).sum().item()
             total_predictions += labels.size(0)
 
@@ -266,13 +270,11 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
                 loss = criterion(outputs, labels)
 
                 val_loss += loss.item()
-                _, predicted = torch.max(outputs, 1)
-                correct_predictions += (predicted == labels).sum().item()
-                total_predictions += labels.size(0)
+                
 
 
         val_losses.append(val_loss / len(val_loader))
-        print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {100 * correct_predictions / total_predictions}%")
+        print(f"Validation Loss: {val_losses[-1]}")
 
         if val_losses[-1] < best_val_loss:
             print(f"Validation loss improved from {best_val_loss:.4f} to {val_losses[-1]:.4f}. Saving model...")
@@ -374,8 +376,10 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
-   
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=30, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+
+# 24 for unhealthy and 30 for the original   
 
 if __name__ == "__main__":
     main()
+

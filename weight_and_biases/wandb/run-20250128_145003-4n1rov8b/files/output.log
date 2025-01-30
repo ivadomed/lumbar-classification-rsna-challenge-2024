@@ -1,0 +1,173 @@
+/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py:82: DtypeWarning: Columns (3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25) have mixed types. Specify dtype option on import or set low_memory=False.
+  labels_df = pd.read_csv(csv_file)
+Nombre de données chargées: 65
+/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py:82: DtypeWarning: Columns (3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25) have mixed types. Specify dtype option on import or set low_memory=False.
+  labels_df = pd.read_csv(csv_file)
+Nombre de données chargées: 65
+/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py:82: DtypeWarning: Columns (3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25) have mixed types. Specify dtype option on import or set low_memory=False.
+  labels_df = pd.read_csv(csv_file)
+Nombre de données chargées: 65
+/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py:82: DtypeWarning: Columns (3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25) have mixed types. Specify dtype option on import or set low_memory=False.
+  labels_df = pd.read_csv(csv_file)
+Nombre de données chargées: 65
+/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py:82: DtypeWarning: Columns (3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25) have mixed types. Specify dtype option on import or set low_memory=False.
+  labels_df = pd.read_csv(csv_file)
+Nombre de données chargées: 65
+Epoch 1/20
+  9%|██████████████████                                                                                                                                                                                     | 3/33 [00:02<00:24,  1.24it/s]
+epoch 0, batch 0, image 0
+epoch 0, batch 0, image 1
+epoch 0, batch 0, image 2
+epoch 0, batch 0, image 3
+epoch 0, batch 0, image 4
+epoch 0, batch 0, image 5
+epoch 0, batch 0, image 6
+epoch 0, batch 0, image 7
+cutmix
+<class 'dict'>
+<class 'monai.transforms.regularization.dictionary.CutMixd'>
+epoch 0, batch 1, image 0
+epoch 0, batch 1, image 1
+epoch 0, batch 1, image 2
+epoch 0, batch 1, image 3
+epoch 0, batch 1, image 4
+epoch 0, batch 1, image 5
+epoch 0, batch 1, image 6
+epoch 0, batch 1, image 7
+cutmix
+<class 'dict'>
+<class 'monai.transforms.regularization.dictionary.CutMixd'>
+epoch 0, batch 2, image 0
+epoch 0, batch 2, image 1
+epoch 0, batch 2, image 2
+epoch 0, batch 2, image 3
+epoch 0, batch 2, image 4
+epoch 0, batch 2, image 5
+epoch 0, batch 2, image 6
+epoch 0, batch 2, image 7
+epoch 0, batch 3, image 0
+epoch 0, batch 3, image 1
+epoch 0, batch 3, image 2
+epoch 0, batch 3, image 3
+epoch 0, batch 3, image 4
+epoch 0, batch 3, image 5
+epoch 0, batch 3, image 6
+epoch 0, batch 3, image 7
+cutmix
+<class 'dict'>
+<class 'monai.transforms.regularization.dictionary.CutMixd'>
+cutmix
+<class 'dict'>
+<class 'monai.transforms.regularization.dictionary.CutMixd'>
+Traceback (most recent call last):
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 376, in <module>
+    main()
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 372, in main
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 200, in train_and_evaluate_model
+    for batch in tqdm(train_loader):
+  File "/usr/local/miniforge3/lib/python3.9/site-packages/tqdm/std.py", line 1182, in __iter__
+    for obj in iterable:
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 673, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/dataset.py", line 350, in __getitem__
+    return self.datasets[dataset_idx][sample_idx]
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/data/dataset.py", line 108, in __getitem__
+    return self._transform(index)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/data/dataset.py", line 94, in _transform
+    return self.transform(data_i)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/compose.py", line 335, in __call__
+    result = execute_compose(
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/compose.py", line 111, in execute_compose
+    data = apply_transform(
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/transform.py", line 141, in apply_transform
+    return _apply_transform(transform, data, unpack_items, lazy, overrides, log_stats)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/transform.py", line 98, in _apply_transform
+    return transform(data, lazy=lazy) if isinstance(transform, LazyTrait) else transform(data)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/spatial/dictionary.py", line 1885, in __call__
+    d[key] = self.rand_rotate(
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/spatial/array.py", line 1384, in __call__
+    out = rotator(img)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/spatial/array.py", line 959, in __call__
+    return rotate(  # type: ignore
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/spatial/functional.py", line 408, in rotate
+    output: torch.Tensor = xform(img_t.unsqueeze(0), transform_t, spatial_size=tuple(int(i) for i in output_shape))
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/networks/layers/spatial_transforms.py", line 584, in forward
+    grid = nn.functional.affine_grid(theta=theta[:, :sr], size=list(dst_size), align_corners=self.align_corners)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/nn/functional.py", line 4432, in affine_grid
+    return handle_torch_function(affine_grid, (theta,), theta, size, align_corners=align_corners)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/overrides.py", line 1647, in handle_torch_function
+    result = torch_func_method(public_api, types, args, kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/data/meta_tensor.py", line 282, in __torch_function__
+    ret = super().__torch_function__(func, types, args, kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/_tensor.py", line 1437, in __torch_function__
+    ret = func(*args, **kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/nn/functional.py", line 4475, in affine_grid
+    return torch.affine_grid_generator(theta, size, align_corners)
+KeyboardInterrupt
+Traceback (most recent call last):
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 376, in <module>
+    main()
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 372, in main
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+  File "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/scs_wandb.py", line 200, in train_and_evaluate_model
+    for batch in tqdm(train_loader):
+  File "/usr/local/miniforge3/lib/python3.9/site-packages/tqdm/std.py", line 1182, in __iter__
+    for obj in iterable:
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 673, in _next_data
+    data = self._dataset_fetcher.fetch(index)  # may raise StopIteration
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/_utils/fetch.py", line 52, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/utils/data/dataset.py", line 350, in __getitem__
+    return self.datasets[dataset_idx][sample_idx]
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/data/dataset.py", line 108, in __getitem__
+    return self._transform(index)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/data/dataset.py", line 94, in _transform
+    return self.transform(data_i)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/compose.py", line 335, in __call__
+    result = execute_compose(
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/compose.py", line 111, in execute_compose
+    data = apply_transform(
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/transform.py", line 141, in apply_transform
+    return _apply_transform(transform, data, unpack_items, lazy, overrides, log_stats)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/transform.py", line 98, in _apply_transform
+    return transform(data, lazy=lazy) if isinstance(transform, LazyTrait) else transform(data)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/spatial/dictionary.py", line 1885, in __call__
+    d[key] = self.rand_rotate(
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/spatial/array.py", line 1384, in __call__
+    out = rotator(img)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/spatial/array.py", line 959, in __call__
+    return rotate(  # type: ignore
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/transforms/spatial/functional.py", line 408, in rotate
+    output: torch.Tensor = xform(img_t.unsqueeze(0), transform_t, spatial_size=tuple(int(i) for i in output_shape))
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/networks/layers/spatial_transforms.py", line 584, in forward
+    grid = nn.functional.affine_grid(theta=theta[:, :sr], size=list(dst_size), align_corners=self.align_corners)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/nn/functional.py", line 4432, in affine_grid
+    return handle_torch_function(affine_grid, (theta,), theta, size, align_corners=align_corners)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/overrides.py", line 1647, in handle_torch_function
+    result = torch_func_method(public_api, types, args, kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/monai/data/meta_tensor.py", line 282, in __torch_function__
+    ret = super().__torch_function__(func, types, args, kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/_tensor.py", line 1437, in __torch_function__
+    ret = func(*args, **kwargs)
+  File "/home/ge.polymtl.ca/p121315/.local/lib/python3.9/site-packages/torch/nn/functional.py", line 4475, in affine_grid
+    return torch.affine_grid_generator(theta, size, align_corners)
+KeyboardInterrupt

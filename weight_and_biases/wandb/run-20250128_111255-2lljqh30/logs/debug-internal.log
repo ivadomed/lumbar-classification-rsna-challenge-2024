@@ -1,0 +1,7 @@
+{"time":"2025-01-28T11:12:55.931317878-05:00","level":"INFO","msg":"stream: starting","core version":"0.19.3","symlink path":"/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/wandb/run-20250128_111255-2lljqh30/logs/debug-core.log"}
+{"time":"2025-01-28T11:12:56.037153095-05:00","level":"INFO","msg":"created new stream","id":"2lljqh30"}
+{"time":"2025-01-28T11:12:56.037201577-05:00","level":"INFO","msg":"stream: started","id":"2lljqh30"}
+{"time":"2025-01-28T11:12:56.037269336-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"2lljqh30"}
+{"time":"2025-01-28T11:12:56.037523618-05:00","level":"INFO","msg":"handler: started","stream_id":"2lljqh30"}
+{"time":"2025-01-28T11:12:56.037649437-05:00","level":"INFO","msg":"sender: started","stream_id":"2lljqh30"}
+{"time":"2025-01-28T11:12:56.335575007-05:00","level":"INFO","msg":"Starting system monitor"}

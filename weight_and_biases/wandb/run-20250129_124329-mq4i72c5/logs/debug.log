@@ -1,0 +1,29 @@
+2025-01-29 12:43:29,225 INFO    MainThread:4086924 [wandb_setup.py:_flush():68] Current SDK version is 0.19.3
+2025-01-29 12:43:29,225 INFO    MainThread:4086924 [wandb_setup.py:_flush():68] Configure stats pid to 4086924
+2025-01-29 12:43:29,225 INFO    MainThread:4086924 [wandb_setup.py:_flush():68] Loading settings from /home/ge.polymtl.ca/p121315/.config/wandb/settings
+2025-01-29 12:43:29,225 INFO    MainThread:4086924 [wandb_setup.py:_flush():68] Loading settings from /home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/wandb/settings
+2025-01-29 12:43:29,225 INFO    MainThread:4086924 [wandb_setup.py:_flush():68] Loading settings from environment variables
+2025-01-29 12:43:29,225 INFO    MainThread:4086924 [wandb_init.py:_log_setup():598] Logging user logs to /home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/wandb/run-20250129_124329-mq4i72c5/logs/debug.log
+2025-01-29 12:43:29,225 INFO    MainThread:4086924 [wandb_init.py:_log_setup():599] Logging internal logs to /home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/weight_and_biases/wandb/run-20250129_124329-mq4i72c5/logs/debug-internal.log
+2025-01-29 12:43:29,226 INFO    MainThread:4086924 [wandb_init.py:init():714] calling init triggers
+2025-01-29 12:43:29,226 INFO    MainThread:4086924 [wandb_init.py:init():719] wandb.init called with sweep_config: {}
+config: {'epochs': 50, 'batch_size': 8}
+2025-01-29 12:43:29,226 INFO    MainThread:4086924 [wandb_init.py:init():745] starting backend
+2025-01-29 12:43:29,497 INFO    MainThread:4086924 [wandb_init.py:init():749] sending inform_init request
+2025-01-29 12:43:29,566 INFO    MainThread:4086924 [backend.py:_multiprocessing_setup():104] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2025-01-29 12:43:29,567 INFO    MainThread:4086924 [wandb_init.py:init():764] backend started and connected
+2025-01-29 12:43:29,575 INFO    MainThread:4086924 [wandb_init.py:init():857] updated telemetry
+2025-01-29 12:43:29,642 INFO    MainThread:4086924 [wandb_init.py:init():889] communicating run to backend with 90.0 second timeout
+2025-01-29 12:43:29,896 INFO    MainThread:4086924 [wandb_init.py:init():941] starting run threads in backend
+2025-01-29 12:43:30,069 INFO    MainThread:4086924 [wandb_run.py:_console_start():2420] atexit reg
+2025-01-29 12:43:30,070 INFO    MainThread:4086924 [wandb_run.py:_redirect():2270] redirect: wrap_raw
+2025-01-29 12:43:30,070 INFO    MainThread:4086924 [wandb_run.py:_redirect():2335] Wrapping output streams.
+2025-01-29 12:43:30,070 INFO    MainThread:4086924 [wandb_run.py:_redirect():2360] Redirects installed.
+2025-01-29 12:43:30,072 INFO    MainThread:4086924 [wandb_init.py:init():983] run started, returning control to user process
+2025-01-29 17:49:12,364 INFO    MainThread:4086924 [wandb_run.py:_finish():2145] finishing run abel-salmona-polytechnique-montr-al/resnet_monai_save_images/mq4i72c5
+2025-01-29 17:49:12,364 INFO    MainThread:4086924 [wandb_run.py:_atexit_cleanup():2385] got exitcode: 0
+2025-01-29 17:49:12,364 INFO    MainThread:4086924 [wandb_run.py:_restore():2367] restore
+2025-01-29 17:49:12,364 INFO    MainThread:4086924 [wandb_run.py:_restore():2373] restore done
+2025-01-29 17:49:13,871 INFO    MainThread:4086924 [wandb_run.py:_footer_history_summary_info():3987] rendering history
+2025-01-29 17:49:13,871 INFO    MainThread:4086924 [wandb_run.py:_footer_history_summary_info():4019] rendering summary
+2025-01-29 17:49:13,871 INFO    MainThread:4086924 [wandb_run.py:_footer_sync_info():3948] logging synced files

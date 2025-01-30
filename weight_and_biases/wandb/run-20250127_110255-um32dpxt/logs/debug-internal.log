@@ -1,0 +1,15 @@
+{"time":"2025-01-27T11:02:55.936191011-05:00","level":"INFO","msg":"stream: starting","core version":"0.19.3","symlink path":"/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/wandb/wandb/run-20250127_110255-um32dpxt/logs/debug-core.log"}
+{"time":"2025-01-27T11:02:56.041949364-05:00","level":"INFO","msg":"created new stream","id":"um32dpxt"}
+{"time":"2025-01-27T11:02:56.041983599-05:00","level":"INFO","msg":"stream: started","id":"um32dpxt"}
+{"time":"2025-01-27T11:02:56.042022633-05:00","level":"INFO","msg":"sender: started","stream_id":"um32dpxt"}
+{"time":"2025-01-27T11:02:56.042015108-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"um32dpxt"}
+{"time":"2025-01-27T11:02:56.042069642-05:00","level":"INFO","msg":"handler: started","stream_id":"um32dpxt"}
+{"time":"2025-01-27T11:02:56.266310355-05:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-01-27T11:03:05.309015779-05:00","level":"INFO","msg":"stream: closing","id":"um32dpxt"}
+{"time":"2025-01-27T11:03:05.309043912-05:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-01-27T11:03:05.309638087-05:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-01-27T11:03:05.66764231-05:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-01-27T11:03:05.775580661-05:00","level":"INFO","msg":"handler: closed","stream_id":"um32dpxt"}
+{"time":"2025-01-27T11:03:05.775610778-05:00","level":"INFO","msg":"writer: Close: closed","stream_id":"um32dpxt"}
+{"time":"2025-01-27T11:03:05.775620115-05:00","level":"INFO","msg":"sender: closed","stream_id":"um32dpxt"}
+{"time":"2025-01-27T11:03:05.775702742-05:00","level":"INFO","msg":"stream: closed","id":"um32dpxt"}
