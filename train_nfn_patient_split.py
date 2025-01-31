@@ -113,8 +113,8 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
     
     for subject in os.listdir(data_dir):
         
-        if counter//3> 15 :
-            break
+        """if counter//3> 15 :
+            break"""
        
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
@@ -177,7 +177,7 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
     """proportions = [1/(i/counter) for i in proportions]
     print(proportions)
     """
-    print(data)
+ 
     return Dataset(data=data, transform=transform)
 
 def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
@@ -241,7 +241,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
     criterion = CrossEntropyLoss(weight=weight)
     #optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
+    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay= wd)
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
