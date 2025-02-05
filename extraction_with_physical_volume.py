@@ -13,6 +13,53 @@ import numpy as np
 import torch
 from pathlib import Path
 import torchio as tio
+from scipy.ndimage import center_of_mass
+from skimage.measure import regionprops
+
+
+# function to calculate the com of a disk and shift it along the disk axis (for the foramina)
+# this fdunction is not really time consuming (I was worried for regionprops but it's a matter of ms)
+def get_shifted_point_along_disk(disk_mask):
+    """
+    Calcule un point décalé selon l'axe du disque en LPI.
+    
+    Args:
+        disk_mask: Masque binaire 3D du disque
+    
+    Returns:
+        point: numpy array des coordonnées (x,y,z) du point décalé
+        disk_radius: rayon calculé du disque selon son axe
+        direction_vector: vecteur normalisé indiquant la direction du disque
+    """
+    # Trouver le centre du disque
+    centroid = center_of_mass(disk_mask)
+    # Trouver la slice sagittale contenant le centre du disque
+    sagittal_slice_idx = int(centroid[0])
+    sagittal_slice = disk_mask[sagittal_slice_idx, :, :]
+    
+    # Calculer l'orientation sur la slice 2D
+    props = regionprops(sagittal_slice.astype(int))[0]
+    orientation = props.orientation  # en radians
+
+    direction_vector = np.array([
+        0,  # x reste inchangé
+        -np.cos(orientation),   # y
+        -np.sin(orientation)    # z
+    ])
+    
+    # Normaliser le vecteur
+    direction_vector = direction_vector / np.linalg.norm(direction_vector)
+    
+    # Calculer le rayon du disque (projection sur le vecteur)
+    mask_points = np.array(np.where(disk_mask)).T
+    centered_points = mask_points - centroid
+    projections = np.abs(centered_points @ direction_vector)
+    disk_radius = np.max(projections)
+    
+    # Calculer le point décalé
+    shifted_point = centroid + direction_vector * disk_radius
+
+    return shifted_point
 
 # function to extract patches from the discs in the nii folder for axial patches
 def patch_extraction_volume(vol, mask, affine):
@@ -89,18 +136,14 @@ def patch_extraction_volume_foraminal(vol, mask, affine):
     i = 0
 
     D, H, W = vol.shape
-    mask = torch.Tensor(mask)
-    nonzero_indices = torch.nonzero(mask)
+    # mask = torch.Tensor(mask)
+    # nonzero_indices = torch.nonzero(mask)
     
-    # Calculate centroid of the mask
-    centroid = nonzero_indices.float().mean(0).numpy().astype(int)
+    # Calculate centroid of the mask and shift it along the disk axis
+    centroid = get_shifted_point_along_disk(mask).astype(int)
 
     # Get voxel sizes from the affine matrix
     voxel_sizes = np.abs(np.diag(affine)[:3])
-    
-    # Displacement parameters
-    displacement_cm = 20  # 20 cm displacement
-    posterior_displacement_voxels = (displacement_cm / voxel_sizes[1]).astype(int)
     
     patch_size_mm = {
         'd': 50,  # depth
@@ -115,20 +158,18 @@ def patch_extraction_volume_foraminal(vol, mask, affine):
         'w': (patch_size_mm['w'] / voxel_sizes[2]).astype(int)
     }
 
-    column_shift = (10/voxel_sizes[0]).astype(int)
-    upper_shift = (10/voxel_sizes[1]).astype(int)
     
     # Extract patches centered on centroid with posterior displacement
     patch1 = vol[
-        max(0, centroid[0] + column_shift):min(D, centroid[0] + column_shift + patch_sizes_voxels['d']//2),
-        max(0, centroid[1] - posterior_displacement_voxels - patch_sizes_voxels['h']//2):min(H, centroid[1] - posterior_displacement_voxels + patch_sizes_voxels['h']//2),
-        max(0, centroid[2] - patch_sizes_voxels['w']//2 + upper_shift):min(W, centroid[2] + patch_sizes_voxels['w']//2 + upper_shift)
+        max(0, centroid[0] + 2):min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
+        max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
+        max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
     ]
     
     patch2 = vol[
-        max(0, centroid[0] - column_shift - patch_sizes_voxels['d']//2):min(D, centroid[0] - column_shift),
-        max(0, centroid[1] - posterior_displacement_voxels - patch_sizes_voxels['h']//2):min(H, centroid[1] - posterior_displacement_voxels + patch_sizes_voxels['h']//2),
-        max(0, centroid[2] - patch_sizes_voxels['w']//2 + upper_shift):min(W, centroid[2] + patch_sizes_voxels['w']//2 + upper_shift)
+        max(0, centroid[0] -1 -patch_sizes_voxels['d']//2):min(D, centroid[0]-2),
+        max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
+        max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
     ]
     
     return patch1, patch2
