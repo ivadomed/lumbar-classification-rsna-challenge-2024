@@ -28,7 +28,7 @@ import torch.nn as nn
 import wandb
 import pytorch_lightning as pl
 
-weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
+weight = torch.tensor([1.0, 4.0, 32.0]).cuda()
 
 class SubsetAsDataset(Dataset):
     def __init__(self, subset):
