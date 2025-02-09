@@ -212,10 +212,11 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                     
                     
                     
-                    
+                    oriented_image = resample_nifti(oriented_image, target_spacing=(0.4, 0.4, 4.4), mode='linear') 
                     nib.save(oriented_image, new_path)
                 else:
-                    
+
+                    oriented_image = resample_nifti(oriented_image, target_spacing=(2.6, 0.4, 0.4), mode='linear')  
                     nib.save(oriented_image, new_path)
 
 # Main function to run the processing
