@@ -183,13 +183,13 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 oriented_image = reorient(image)
                 # then apply the resampling to the median values resolution for axial T2w images
                 if acq == 'ax': 
-                    oriented_image = resample_nifti(oriented_image, target_spacing=(0.4, 0.4, 4.4), mode='linear')  
+                    final_image = resample_nifti(oriented_image, target_spacing=(0.4, 0.4, 4.4), mode='linear')  
                     
-                    nib.save(oriented_image, new_path)
+                    nib.save(final_image, new_path)
                 else:
-                    oriented_image = resample_nifti(oriented_image, target_spacing=(2.6, 0.4, 0.4), mode='linear')  
+                    final_image = resample_nifti(oriented_image, target_spacing=(4.0, 0.4, 0.4), mode='linear')  
 
-                    nib.save(oriented_image, new_path)
+                    nib.save(final_image, new_path)
                     
 
         else : 
@@ -212,12 +212,12 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                     
                     
                     
-                    oriented_image = resample_nifti(oriented_image, target_spacing=(0.4, 0.4, 4.4), mode='linear') 
-                    nib.save(oriented_image, new_path)
+                    final_image = resample_nifti(oriented_image, target_spacing=(0.4, 0.4, 4.4), mode='linear') 
+                    nib.save(final_image, new_path)
                 else:
 
-                    oriented_image = resample_nifti(oriented_image, target_spacing=(2.6, 0.4, 0.4), mode='linear')  
-                    nib.save(oriented_image, new_path)
+                    final_image = resample_nifti(oriented_image, target_spacing=(4.0, 0.4, 0.4), mode='linear')  
+                    nib.save(final_image, new_path)
 
 # Main function to run the processing
 def main():
