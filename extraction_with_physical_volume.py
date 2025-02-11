@@ -220,13 +220,13 @@ def patch_extraction_foraminal(vol, mask, affine):
     
     # Extract patches centered on centroid with posterior displacement
     patch1 = vol[
-        max(0, centroid[0] + 2):min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
+        max(0, centroid[0] + 1):min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
         max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
         max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
     ]
     
     patch2 = vol[
-        max(0, centroid[0] -1 -patch_sizes_voxels['d']//2):min(D, centroid[0]-2),
+        max(0, centroid[0] -1 -patch_sizes_voxels['d']//2):min(D, centroid[0]-1),
         max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
         max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
     ]
