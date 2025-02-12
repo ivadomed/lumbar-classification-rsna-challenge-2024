@@ -28,7 +28,7 @@ import torch.nn as nn
 import wandb
 import pytorch_lightning as pl
 
-weight = torch.tensor([1.0, 4.0, 32.0]).cuda()
+weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
 class SubsetAsDataset(Dataset):
     def __init__(self, subset):
@@ -48,7 +48,7 @@ def get_transforms(mode='basic'):
     if mode == 'basic':
         common_transforms = Compose([
             LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            Spacingd(keys=['T1','T2'], pixdim=(2.4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
+            Spacingd(keys=['T1','T2'], pixdim=(4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
             SpatialPadd(keys=['T1','T2'], spatial_size=(10, 70, 70)),  # Padding pour atteindre une taille fixe
             CenterSpatialCropd(keys=['T1','T2'], roi_size=(10, 70, 70)),  # Crop pour obtenir une taille fixe
@@ -61,7 +61,7 @@ def get_transforms(mode='basic'):
         # same but changing steps as random steps
         common_transforms = Compose([
             LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            Spacingd(keys=['T1','T2'], pixdim=(2.4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
+            Spacingd(keys=['T1','T2'], pixdim=(4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
             RandRotated(keys=['T1','T2'], prob=1, range_y=0.1),  # Rotation aléatoire
             SpatialPadd(keys=['T1','T2'], spatial_size=(10, 70, 70)),  # Padding pour atteindre une taille fixe
@@ -112,6 +112,8 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
+    
+
         
         """if counter//3> 15 :
             break"""
@@ -178,23 +180,25 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
     print(proportions)
     """
  
-    return Dataset(data=data, transform=transform)
+    return data
 
 def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
     # Préparer les données
     transform=get_transforms()
-    train_dataset = prepare_data(train_dir, csv_file, transform)
+    train_data = prepare_data(train_dir, csv_file, transform)
+    train_dataset = Dataset(train_data, transform)
     val_dataset = prepare_data(val_dir, csv_file, transform)
     # constant key for random gen
     seed = 42
     generator = torch.Generator().manual_seed(seed)
 
-     
+    
 
     # data augmentation if augment=True
     for i in range(1):
         transform=get_transforms('random')
-        train_aug = prepare_data(train_dir, csv_file, transform)
+        
+        train_aug = Dataset(train_data, transform)
         # data_aug_prime = prepare_data(data_dir, csv_file, transform)
         
         # then turn the subset for training back into a dataset
@@ -404,8 +408,8 @@ def main():
     wandb.save(config)
 
     # Extract the data directory and CSV file path
-    train_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/training"
-    val_dir = "../../duke/public/rsna_challenge/20250102nii_data_splits/validation"
+    train_dir = "../../duke/public/rsna_challenge/20250212nii_data_splits/training"
+    val_dir = "../../duke/public/rsna_challenge/20250212nii_data_splits/validation"
     csv_file = "../../duke/public/rsna_challenge/dcom_data/train.csv"
     
 
@@ -418,7 +422,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=60, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
     wandb.finish()  
 
