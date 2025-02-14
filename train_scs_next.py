@@ -148,7 +148,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
     
     # Définir le modèle, la loss function et l'optimiseur
     # already defined as the equivalent of the ConvNeXt 50
-    model = ConvNeXt3D(in_channels=1, spatial_dims=3, init_features=64)
+    model = ConvNeXt3D(in_chans=1, num_classes=3)
 
     # hyperparameters
     hyperparameters = {
@@ -201,15 +201,14 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
             # Stats
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
-            _, labels = torch.max(labels, 1)
             correct_predictions += (predicted == labels).sum().item()
             total_predictions += labels.size(0)
 
             # saving first images
             
             # Saving first images (W&B log)
-            if epoch == 0 and i < 8:  # Uniquement pour la première époque, premiers batches
-                print(f"Saving images for batch {i}")
+            if epoch == 0 and i < 4:  # Uniquement pour la première époque, premiers batches
+                print(f"Saving images for batch {i} with batch dimension of {inputs.shape}")
                 for j, img in enumerate(inputs):
                     train_image= img.detach().cpu().squeeze()
                 
@@ -359,7 +358,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=2e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=20, val_split=0.25, augment=True)
    
 
 if __name__ == "__main__":
