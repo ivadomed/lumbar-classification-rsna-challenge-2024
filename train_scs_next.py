@@ -1,19 +1,22 @@
+# this file aims to try different data processing and augmentation techniques to improve the model's performance
+# it uses the data created by extraction_with_physical_volume.py in the preprocessing-pipeline branch
+
+# importations 
 import os
 import numpy as np
 import torch
 from tqdm import tqdm
 import pandas as pd
 import monai
-from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
-    ToTensord, RandRotate90d, SpatialCropd, SpatialPadd, CenterSpatialCropd,
+    ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotated,
-    Spacingd, RandSpatialCropd, Flipd, RandBiasFieldd, EnsureChannelFirstd
+    Spacingd, RandSpatialCropd, RandBiasFieldd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
 import torch.optim as optim
 from torch.nn import CrossEntropyLoss
 from monai.transforms import Compose
@@ -23,74 +26,63 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import nibabel as nib
+import wandb
 import argparse  
+from monai.data import Dataset, DataLoader
+from convnext import ConvNeXt3D
 
-weight_challenge = torch.tensor([1.0, 2.0, 4.0]).cuda()
+# weights of the loss
+weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
-class SubsetAsDataset(Dataset):
-    def __init__(self, subset):
-        self.subset = subset
-    
-    def __len__(self):
-        return len(self.subset)
-    
-    def __getitem__(self, idx):
-        return self.subset[idx]
+# we use patches for SCS extracted with thoses values in mm
+#'RL': 60,  Right-Left 
+# 'AP': 40, Anterior-Posterior
+# 'SI': 30, Superior-Inferior
+
+# the median value for the voxel size is 0.43 mm in the axial plane
+# and 4.4 mm between axial planes (slice thickness)
+# so basically we're having a patch of size 150*100*7 for 0.4,0.4,4.4 resampling
 
 # transformation pipeline for the data
-def get_transforms(mode='basic', side='left'):
+def get_transforms(mode='basic'):
         # Define the transform pipeline with rotation augmentation
     
-    first_transforms = Compose([
-        LoadImaged(keys=['image']),  # Charge l'image et la segmentation
-        Spacingd(keys=['image'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
-        EnsureChannelFirstd(keys=["image"])  # S'assure que l'image et la segmentation ont la dimension de canal en premier
-        ])
-    
-    right_flip = Compose([
-        Flipd(keys=['image'], spatial_axis=0)])
-
-    second_transforms_basic = Compose([
-        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, -1, -1)),  # crop pour récupérer la gauche
-        SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)),  # Padding pour atteindre une taille fixe
-        CenterSpatialCropd(keys=['image'], roi_size=(60, 80, 6)),  # Crop pour obtenir une taille fixe
-        ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
-        NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-        ToTensord(keys=['image']) 
-        ])
-    
-    second_transforms_random = Compose([
-        RandRotated(keys=['image'], prob=1, range_x=0.2),
-        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, -1, -1)),  # crop pour récupérer la gauche
-        RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)), # Random bias field
-        SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)),  # Padding pour atteindre une taille fixe
-        RandSpatialCropd(keys=['image'], roi_size=(60, 80, 6), random_size=False),  # Crop pour obtenir une taille fixe
-        ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
-        NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-        ToTensord(keys=['image'])
-    ])
 
     if mode == 'basic':
-        if side == 'left':
-            common_transforms = Compose([first_transforms, second_transforms_basic])
-        elif side == 'right':
-            common_transforms = Compose([first_transforms, right_flip, second_transforms_basic])
-
+        common_transforms = Compose([
+            LoadImaged(keys=['image']),  # Charge l'image et la segmentation
+            Spacingd(keys=['image'], pixdim=(0.4, 0.4, 0.6), mode=('trilinear')),  # Ré-échantillonnage de l'image
+            EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
+            SpatialPadd(keys=['image'], spatial_size=(120, 80, 32)),  # Padding pour atteindre une taille fixe
+            CenterSpatialCropd(keys=['image'], roi_size=(120, 80, 32)),  # Crop pour obtenir une taille fixe
+            ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
+            NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
+            ToTensord(keys=['image']) 
+        ])
     elif mode == 'random':
-        if side == 'left':
-            common_transforms = Compose([first_transforms, second_transforms_random])
-        elif side == 'right':
-            common_transforms = Compose([first_transforms, right_flip, second_transforms_random])
+        # same but changing steps as random steps
+        common_transforms = Compose([
+            LoadImaged(keys=['image']),  # Charge l'image et la segmentation
+            Spacingd(keys=['image'], pixdim=(0.4, 0.4, 0.6), mode=('trilinear')),  # Ré-échantillonnage de l'image
+            EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
+            RandRotated(keys=['image'], prob=1, range_x=0.2),
+            RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)), # Random bias field
+            SpatialPadd(keys=['image'], spatial_size=(120, 80, 32)),  # Padding pour atteindre une taille fixe
+            RandSpatialCropd(keys=['image'], roi_size=(120, 80, 32), random_size=False),  # Crop pour obtenir une taille fixe
+            ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
+            NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
+            ToTensord(keys=['image']) 
+        ])
     
     return common_transforms
+    
 
-def prepare_data(data_dir, csv_file, transform_left, transform_right):
-    data_right = []
-    data_left = []
+
+def prepare_data(data_dir, csv_file, transform):
+    data = []
     labels_df = pd.read_csv(csv_file)
     
     counter = 0
-    counter_invalid = 0
 
     # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
@@ -98,8 +90,6 @@ def prepare_data(data_dir, csv_file, transform_left, transform_right):
     for subject in os.listdir(data_dir):
         print(subject)
         subject_dir = os.path.join(data_dir, subject, 'anat')
-        #if counter>10:
-        #    break
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
@@ -114,95 +104,71 @@ def prepare_data(data_dir, csv_file, transform_left, transform_right):
                         image_data = nib.load(image_path).get_fdata()
                         if image_data.ndim == 3:
                             subject_id = (subject.replace('sub-', ''))
-
-                            label_column_sasl = f'left_subarticular_stenosis_{disk_level.lower()}'
-                            label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
+                            
+                            label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
                             # Obtenir l'étiquette brute
-
-                            label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
-                            label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
+                            
+                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
                             
                             # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric_sasr = text2int.get(label_sasr, -1)
-                            label_numeric_sasl = text2int.get(label_sasl, -1)
-                            if label_numeric_sasr in [0, 1, 2] and label_numeric_sasl in [0, 1, 2]:
-                                data_right.append({"image": image_path, "label": label_numeric_sasr})
-                                data_left.append({"image": image_path, "label": label_numeric_sasl})
-                                counter += 2
-                            else:
-                                counter_invalid += 1
-                                print(f"Étiquette {label_sasr} ou {label_sasl} invalide pour {subject_id} à {disk_level}")
+                            label_numeric = text2int.get(label, -1)
+                            if label_numeric != -1:
+                                counter += 1
+                                data.append({"image": image_path, "label": label_numeric})
 
 
     print(f"Nombre de données chargées: {counter}")
-    print(f"Nombre de données invalides: {counter_invalid}")
-    return Dataset(data=data_left, transform=transform_left), Dataset(data=data_right, transform=transform_right)
+    return Dataset(data=data, transform=transform)
 
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, epochs=20, val_split=0.25, augment=True):
     
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
-
+    # Initialiser W&B avant l'entraînement
+    wandb.init(project="resnet_monai_save_images", config={"epochs": 20, "batch_size": 8})
+    
     # Préparer les données
     data_dir_train = os.path.join(data_dir, 'training')
     data_dir_val = os.path.join(data_dir, 'validation')
 
-    # Préparer les données
-    transform_left=get_transforms(mode='basic', side='left')
-    transform_right=get_transforms(mode='basic', side='right')
-    data_left_train, data_right_train = prepare_data(data_dir_train, csv_file, transform_left=transform_left, transform_right=transform_right)
-    data_left_val, data_right_val = prepare_data(data_dir_val, csv_file, transform_left=transform_left, transform_right=transform_right)
+    transform=get_transforms()
+    data_train = prepare_data(data_dir_train, csv_file, transform)
+    data_val = prepare_data(data_dir_val, csv_file, transform)
     
-    data_train = ConcatDataset([data_left_train, data_right_train])
-    data_val = ConcatDataset([data_left_val, data_right_val])
-
-
 
     # data augmentation if augment=True
     if augment:
-        rand_trans_right = get_transforms(mode='random', side='right')
-        rand_trans_left = get_transforms(mode='random', side='left')
-        data_aug_left, data_aug_right = prepare_data(data_dir_train, csv_file, transform_left=rand_trans_left, transform_right=rand_trans_right)
-        data_aug = ConcatDataset([data_aug_left, data_aug_right])
-        data_aug_prime_left, data_aug_prime_right = prepare_data(data_dir_train, csv_file, transform_left=rand_trans_left, transform_right=rand_trans_right)
-        data_aug_prime = ConcatDataset([data_aug_prime_left, data_aug_prime_right])
+        transform = get_transforms(mode='random')
+        data_train_prime = prepare_data(data_dir_train, csv_file, transform)
+        data_train_second = prepare_data(data_dir_train, csv_file, transform)
+        data_train_third = prepare_data(data_dir_train, csv_file, transform)
 
-        # then concatenate the two datasets
-        train_dataset = ConcatDataset([data_train, data_aug, data_aug_prime])
+        data_train = ConcatDataset([data_train, data_train_prime, data_train_second, data_train_third])
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(data_train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(data_val, batch_size=batch_size, shuffle=False)
     
     # Définir le modèle, la loss function et l'optimiseur
-    model = ResNet(
-            block="bottleneck",
-            layers=layers,
-            block_inplanes=[64, 128, 256, 512],
-            spatial_dims=3,
-            n_input_channels=1,
-            num_classes=3,
-            ).cuda()
-    
+    # already defined as the equivalent of the ConvNeXt 50
+    model = ConvNeXt3D(in_channels=1, spatial_dims=3, init_features=64)
+
     # hyperparameters
     hyperparameters = {
         'batch_size': batch_size,
         'learning_rate': lr,
         'num_epochs': epochs,
         'val_split': val_split,
-        'layers': layers,
-        'weight_decay': wd,
         'augment': augment,
-        'train_set_size': len(train_dataset),
+        'train_set_size': len(data_train),
         'val_set_size': len(data_val),
         'randbiaisfield prob and coeff': (0.4, 0.3)
     }
-    model_name = f"sas_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}"
+    model_name = f"scs_convnext_epochs_{epochs}_lr_{lr}"
 
     
     model = model.to(device)
     
-    criterion = CrossEntropyLoss(weight=weight_challenge)
-    #optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    criterion = CrossEntropyLoss(weight=weight)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
+    optimizer = optim.AdamW(model.parameters(), lr=lr)
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
@@ -218,9 +184,8 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, 
         total_predictions = 0
 
 
-
+        i = 0
         for batch in tqdm(train_loader):
-            
             inputs = batch["image"].cuda()
             labels = batch["label"].cuda()
             
@@ -236,9 +201,34 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, 
             # Stats
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
+            _, labels = torch.max(labels, 1)
             correct_predictions += (predicted == labels).sum().item()
             total_predictions += labels.size(0)
 
+            # saving first images
+            
+            # Saving first images (W&B log)
+            if epoch == 0 and i < 8:  # Uniquement pour la première époque, premiers batches
+                print(f"Saving images for batch {i}")
+                for j, img in enumerate(inputs):
+                    train_image= img.detach().cpu().squeeze()
+                
+
+                    fig = plot_slices(image=train_image,
+                                
+                                        )
+
+                    wandb.log({"training images": wandb.Image(fig)})
+                    plt.close(fig)
+
+            i += 1
+
+        # Log des métriques pour chaque epoch
+        wandb.log({
+            "epoch_loss": running_loss / len(train_loader),
+            "epoch_accuracy": correct_predictions / total_predictions,
+            "epoch": epoch + 1
+        })
 
         train_losses.append(running_loss / len(train_loader))
         print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
@@ -309,9 +299,33 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, 
     plt.tight_layout()  # Pour éviter que les graphiques se chevauchent
     plt.savefig(f'training_loss_{model_name}.png')
     plt.close()
+
+    wandb.finish()
  
     
+def plot_slices(image):
+    """
+    Plot the image, ground truth and prediction of the mid-sagittal axial slice
+    The orientaion is assumed to RPI
+    """
 
+    # bring everything to numpy 
+    ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
+    image = image.float().numpy()
+    
+    mid_axial = image.shape[2]//2
+    # plot X slices before and after the mid-sagittal slice in a grid
+    fig, axs = plt.subplots(1, 6, figsize=(15, 3))
+    fig.suptitle('Axial Slices')
+
+    for i in range(6):
+        axs[i].imshow(image[:,:, mid_axial-3+i].T, cmap='gray')
+        axs[i].axis('off')
+
+    plt.tight_layout()
+    # fig.show()
+    
+    return fig   
 
 # Function to parse command-line arguments
 def parse_args():
@@ -329,7 +343,6 @@ def main():
     csv_file = args.csv_file
     
 
-
     # Check if the data directory exists
     if not os.path.exists(data_dir):
         print(f"Error: The data directory '{data_dir}' does not exist.")
@@ -346,7 +359,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=50, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=2e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
 
 if __name__ == "__main__":
