@@ -29,7 +29,7 @@ import nibabel as nib
 import wandb
 import argparse  
 from monai.data import Dataset, DataLoader
-from convnext import ConvNeXt3D
+from convnext import ConvNeXtAxial3D
 
 # weights of the loss
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
@@ -51,10 +51,9 @@ def get_transforms(mode='basic'):
     if mode == 'basic':
         common_transforms = Compose([
             LoadImaged(keys=['image']),  # Charge l'image et la segmentation
-            Spacingd(keys=['image'], pixdim=(0.4, 0.4, 0.6), mode=('trilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
-            SpatialPadd(keys=['image'], spatial_size=(120, 80, 32)),  # Padding pour atteindre une taille fixe
-            CenterSpatialCropd(keys=['image'], roi_size=(120, 80, 32)),  # Crop pour obtenir une taille fixe
+            SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
+            CenterSpatialCropd(keys=['image'], roi_size=(120, 80, 6)),  # Crop pour obtenir une taille fixe
             ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
             NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
             ToTensord(keys=['image']) 
@@ -63,12 +62,11 @@ def get_transforms(mode='basic'):
         # same but changing steps as random steps
         common_transforms = Compose([
             LoadImaged(keys=['image']),  # Charge l'image et la segmentation
-            Spacingd(keys=['image'], pixdim=(0.4, 0.4, 0.6), mode=('trilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
             RandRotated(keys=['image'], prob=1, range_x=0.2),
             RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)), # Random bias field
-            SpatialPadd(keys=['image'], spatial_size=(120, 80, 32)),  # Padding pour atteindre une taille fixe
-            RandSpatialCropd(keys=['image'], roi_size=(120, 80, 32), random_size=False),  # Crop pour obtenir une taille fixe
+            SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
+            RandSpatialCropd(keys=['image'], roi_size=(120, 80, 6), random_size=False),  # Crop pour obtenir une taille fixe
             ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
             NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
             ToTensord(keys=['image']) 
@@ -148,7 +146,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=1e-4, 
     
     # Définir le modèle, la loss function et l'optimiseur
     # already defined as the equivalent of the ConvNeXt 50
-    model = ConvNeXt3D(in_chans=1, num_classes=3)
+    model = ConvNeXtAxial3D(in_chans=1, num_classes=3)
 
     # hyperparameters
     hyperparameters = {
