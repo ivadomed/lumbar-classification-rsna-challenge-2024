@@ -341,7 +341,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=16
             best_val_loss = val_losses[-1]
             
             # Sauvegarde du modèle
-            torch.save(model.state_dict(), f"{model_name}.pth")
+            torch.save(model.state_dict(), f"model/{model_name}.pth")
 
         wandb_logs = {
                 "train_loss": train_losses[-1],
@@ -384,7 +384,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=16
 
     # Sauvegarder la figure complète avec les deux graphiques
     plt.tight_layout()  # Pour éviter que les graphiques se chevauchent
-    plt.savefig(f'training_loss_{model_name}.png')
+    plt.savefig(f'fig/training_loss_{model_name}.png')
     plt.close()
  
     
