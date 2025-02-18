@@ -4,12 +4,13 @@ import torch
 from tqdm import tqdm
 import pandas as pd
 import monai
+
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd
+    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -27,18 +28,10 @@ from image import Image
 import torch.nn as nn
 import wandb
 import pytorch_lightning as pl
+from augment import *
 
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
-class SubsetAsDataset(Dataset):
-    def __init__(self, subset):
-        self.subset = subset
-    
-    def __len__(self):
-        return len(self.subset)
-    
-    def __getitem__(self, idx):
-        return self.subset[idx]
 
 # transformation pipeline for the data
 def get_transforms(mode='basic'):
@@ -48,10 +41,9 @@ def get_transforms(mode='basic'):
     if mode == 'basic':
         common_transforms = Compose([
             LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            Spacingd(keys=['T1','T2'], pixdim=(4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
-            SpatialPadd(keys=['T1','T2'], spatial_size=(10, 70, 70)),  # Padding pour atteindre une taille fixe
-            CenterSpatialCropd(keys=['T1','T2'], roi_size=(10, 70, 70)),  # Crop pour obtenir une taille fixe
+            SpatialPadd(keys=['T1','T2'], spatial_size=(6, 100, 100)),  # Padding pour atteindre une taille fixe
+            CenterSpatialCropd(keys=['T1','T2'], roi_size=(6, 100, 100)),  # Crop pour obtenir une taille fixe
             ScaleIntensityd(keys=['T1','T2']),  # Normalisation de l'intensité pour l'image
             NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
             ConcatItemsd(keys=["T1","T2"], name="combinaison"),
@@ -61,14 +53,27 @@ def get_transforms(mode='basic'):
         # same but changing steps as random steps
         common_transforms = Compose([
             LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            Spacingd(keys=['T1','T2'], pixdim=(4, 0.6, 0.6), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
-            RandRotated(keys=['T1','T2'], prob=1, range_y=0.1),  # Rotation aléatoire
-            SpatialPadd(keys=['T1','T2'], spatial_size=(10, 70, 70)),  # Padding pour atteindre une taille fixe
-            RandSpatialCropd(keys=['T1','T2'], roi_size=(10, 70, 70), random_size=False),  # Crop pour obtenir une taille fixe
-            ResizeWithPadOrCropd(keys=['T1', 'T2'], spatial_size=(10, 70, 70)),
+            SpatialPadd(keys=['T1','T2'], spatial_size=(6, 100, 100)),  # Padding pour atteindre une taille fixe
+            RandSpatialCropd(keys=['T1','T2'], roi_size=(6, 100, 100), random_size=False),  # Crop pour obtenir une taille fixe
+            RandRotated(keys=['T1','T2'], prob=0.5, range_y=0.1),  # Rotation aléatoire
+            RandLambdad(keys=['T1','T2'],func=aug_sqrt,prob=0.05,),
+            RandLambdad(keys=['T1','T2'],func=aug_sin,prob=0.05,),
+            RandLambdad(keys=['T1','T2'],func=aug_exp,prob=0.05,),
+            RandLambdad(keys=['T1','T2'],func=aug_sig,prob=0.05, ),
+            RandLambdad(keys=['T1','T2'],func=aug_laplace,prob=0.05,),
+            RandLambdad(keys=['T1','T2'],func=aug_inverse,prob=0.05, ),   
+
+            RandBiasFieldd(keys=['T1','T2'],prob=0.05),
+            RandAffined(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear","bilinear"]), 
+
+            RandGaussianNoised(keys=['T1','T2'], mean=0.0, std=0.1, prob=0.05),
+            RandGaussianSharpend(keys=['T1','T2'], prob=0.05),   
+
+            Rand3DElasticd(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear", "bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
+              
+            ResizeWithPadOrCropd(keys=['T1', 'T2'], spatial_size=(6, 100, 100)),
             RandScaleIntensityd(keys=['T1','T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
-            NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
             ConcatItemsd(keys=["T1","T2"], name="combinaison"),
             ToTensord(keys=["combinaison"]) 
         ])
@@ -88,7 +93,7 @@ def plot_slices(image):
 
     mid_sagittal = image.shape[1]//2
     # plot X slices before and after the mid-sagittal slice in a grid
-    fig, axs = plt.subplots(2, 6, figsize=(10, 30))
+    fig, axs = plt.subplots(2, 6, figsize=(18, 54))
     fig.suptitle('Original Image')
     for i in range(6):
         axs[0, i].imshow(image[0,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[0, i].axis('off') 
@@ -102,12 +107,14 @@ def plot_slices(image):
     return fig
 
 
-def prepare_data(data_dir, csv_file, transform, side='left'):
+def prepare_data(data_dir, csv_file, transform,train, side='left'):
     data = []
     labels_df = pd.read_csv(csv_file)
     
     counter = 0
+    counter_augmented = 0
     proportions = [0,0,0]
+    proportions_augmented = [0,0,0]
     # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
@@ -171,45 +178,39 @@ def prepare_data(data_dir, csv_file, transform, side='left'):
                             if label_numeric != -1:
                                 proportions[label_numeric] += 1 
                                 counter += 1
+                                proportions_augmented[label_numeric] += 1 
+                                counter_augmented += 1
                                 
                                 data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
 
+                                """if train and label_numeric == 2 : 
+                                    for i in range (2):
+                                        proportions_augmented[label_numeric] += 1 
+                                        counter_augmented += 1
+                                
+                                        data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})"""
+
+
 
     print(f"Nombre de données chargées: {counter}")
-    """proportions = [1/(i/counter) for i in proportions]
+    proportions = [(i/counter) for i in proportions]
     print(proportions)
-    """
+    proportions_augmented = [(i/counter_augmented) for i in proportions_augmented]
+    print(proportions_augmented)
  
     return data
 
-def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
+def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=16, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
     # Préparer les données
-    transform=get_transforms()
-    train_data = prepare_data(train_dir, csv_file, transform)
-    train_dataset = Dataset(train_data, transform)
-    val_dataset = prepare_data(val_dir, csv_file, transform)
-    # constant key for random gen
-    seed = 42
-    generator = torch.Generator().manual_seed(seed)
-
     
+    transform=get_transforms('random')
+    train_data = prepare_data(train_dir, csv_file, transform, train = True)
+    train_dataset = Dataset(train_data, transform)
 
-    # data augmentation if augment=True
-    for i in range(1):
-        transform=get_transforms('random')
-        
-        train_aug = Dataset(train_data, transform)
-        # data_aug_prime = prepare_data(data_dir, csv_file, transform)
-        
-        # then turn the subset for training back into a dataset
-        """train_dataset = SubsetAsDataset(train_dataset)
-        train_aug = SubsetAsDataset(train_aug)
-        """#train_aug_prime = SubsetAsDataset(train_aug_prime)
-
-        # then concatenate the two datasets
-        train_dataset = ConcatDataset([train_dataset, train_aug])
-        # train_dataset = ConcatDataset([train_dataset, train_aug, train_aug_prime])
-
+    transform=get_transforms()
+    val_dataset = prepare_data(val_dir, csv_file, transform, train = False)
+    val_dataset = Dataset(val_dataset, transform)
+    # constant key for random gen
         
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -243,6 +244,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
     model = model.to(device)
     
     criterion = CrossEntropyLoss(weight=weight)
+    
     #optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
 
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay= wd)
@@ -298,6 +300,9 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
 
         train_losses.append(running_loss / len(train_loader))
 
+        wandb.log({"train_loss": train_losses[-1], "epoch": epoch})  # Log training loss
+    
+
         print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
 
         # Validation
@@ -324,6 +329,9 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
 
 
         val_losses.append(val_loss / len(val_loader))
+
+        wandb.log({"val_loss": val_losses[-1], "epoch": epoch})  # Log training loss
+    
         print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {100 * correct_predictions / total_predictions}%")
 
         
@@ -422,7 +430,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=16, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
     wandb.finish()  
 
