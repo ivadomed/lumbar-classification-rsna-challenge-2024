@@ -33,7 +33,7 @@ class ConvNeXtBlockBase(nn.Module):
 class ConvNeXtBlockBaseS(nn.Module):
     def __init__(self, dim, conv_layer, drop_path=0., layer_scale_init_value=1e-6):
         super().__init__()
-        self.dwconv = conv_layer(dim, dim, kernel_size=5, padding=3, groups=dim) 
+        self.dwconv = conv_layer(dim, dim, kernel_size=5, padding=2, groups=dim) 
         self.norm = nn.GroupNorm(num_groups=1, num_channels=dim) 
         self.pwconv1 = nn.Linear(dim, 4 * dim)
         self.act = nn.GELU()
@@ -99,21 +99,16 @@ class ConvNeXtAxialBase(nn.Module):
         super().__init__()
         self.downsample_layers = nn.ModuleList()
         stem = nn.Sequential(
-            conv_layer(in_chans, dims[0], kernel_size=4, stride=(2, 2, 1)), # here you cn modify it and put like stride=(1,2,2) for 3D
+            conv_layer(in_chans, dims[0], kernel_size=4, stride=(2, 2, 1), padding=1), # here you cn modify it and put like stride=(1,2,2) for 3D
             nn.GroupNorm(num_groups=1, num_channels=dims[0])
         )
         self.downsample_layers.append(stem)
-        for i in range(2):
+        for i in range(3):
             downsample_layer = nn.Sequential(
                 nn.GroupNorm(num_groups=1, num_channels=dims[i]),
-                conv_layer(dims[i], dims[i + 1], kernel_size=2, stride=(2, 2, 1)),
+                conv_layer(dims[i], dims[i + 1], kernel_size=(2, 2, 1), stride=(2, 2, 1)),
             )
             self.downsample_layers.append(downsample_layer)
-        third_downsample_layer = nn.Sequential(
-            nn.GroupNorm(num_groups=1, num_channels=dims[2]),
-            conv_layer(dims[2], dims[3], kernel_size=2, stride=2),
-        )
-        self.downsample_layers.append(third_downsample_layer)
 
         self.stages = nn.ModuleList()
         for i in range(4):
