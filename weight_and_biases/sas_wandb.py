@@ -9,7 +9,7 @@ from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, SpatialCropd, SpatialPadd, CenterSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotated,
-    Spacingd, RandSpatialCropd, Flipd, RandBiasFieldd, EnsureChannelFirstd
+    Spacingd, RandSpatialCropd, Flipd, RandBiasFieldd, EnsureChannelFirstd, Lambdad
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -197,7 +197,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, 
     criterion = CrossEntropyLoss(weight=weight_challenge)
     #optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
+    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay= wd)
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
@@ -266,76 +266,6 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, 
             "epoch": epoch + 1
         })
 
-
-        '''# Entraînement
-    for epoch in range(epochs):
-        print(f"Epoch {epoch+1}/{epochs}")
-        model.train()
-        running_loss = 0.0
-        correct_predictions = 0
-        total_predictions = 0
-
-        i = 0
-        print(i)
-        for batch in tqdm(train_loader):
-            
-            inputs = batch["image"].cuda()
-            labels = batch["label"].cuda()
-            
-            # Forward pass
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-
-            # Backward pass et optimisation
-            loss.backward()
-            optimizer.step()
-
-            # Stats
-            running_loss += loss.item()
-            _, predicted = torch.max(outputs, 1)
-            correct_predictions += (predicted == labels).sum().item()
-            total_predictions += labels.size(0)
-
-            # saving first images
-            
-            if epoch == 0 and i < 4:  # Uniquement pour la première époque
-                for j, img in enumerate(inputs):
-                    
-                    print(f"epoch{epoch}, batch {i}, image {j}")
-
-                    # Convertir le tenseur en tableau numpy
-                    img_numpy = img.cpu().numpy().squeeze()
-                    print(img_numpy.shape)
-
-                    # Créer un fichier NIfTI
-                    nifti_filename = f"epoch{epoch}_batch_0_image_{j}.nii.gz"  # Nom du fichier simple
-                    nifti_path = os.path.join(save_dir, nifti_filename)  # Chemin complet pour enregistrer le fichier
-                    print(f"Saving image to {nifti_path}")
-
-                    # Créer l'image NIfTI et l'enregistrer
-                    nifti_img = nib.Nifti1Image(img_numpy, affine=np.eye(4))
-                    nib.save(nifti_img, nifti_path)
-
-                    # Création de l'artefact W&B
-                    artifact = wandb.Artifact(nifti_filename, type="nifti")
-                    artifact.add_file(nifti_path)  # Ajout du fichier à l'artefact
-                    wandb.log_artifact(artifact)  # Enregistrement de l'artefact dans W&B
-
-                    # Journaliser les métadonnées associées
-                    wandb.log({
-                        "epoch": epoch,
-                        "batch": 0,
-                        "image_index": j,
-                        "image_saved_path": nifti_path,  # Chemin ou nom du fichier comme référence
-        })
-
-                # Logger d'autres métriques sur W&B
-                wandb.log({"epoch": epoch, "batch": i, "loss": loss.item()})
-
-            i += 1'''
-
-
         train_losses.append(running_loss / len(train_loader))
         print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
 
@@ -365,13 +295,15 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, 
         val_losses.append(val_loss / len(val_loader))
         print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {100 * correct_predictions / total_predictions}%")
 
-        if val_losses[-1] < best_val_loss:
-            print(f"Validation loss improved from {best_val_loss:.4f} to {val_losses[-1]:.4f}. Saving model...")
-            best_val_loss = val_losses[-1]
+        if val_losses[-1] < best_val_loss*1.05:
+            print("Val loss good enough, saving model")
+            if val_losses[-1] < best_val_loss:
+                print(f"Validation loss improved from {best_val_loss:.4f} to {val_losses[-1]:.4f}")
+                best_val_loss = val_losses[-1]
             
             # Sauvegarde du modèle
-            torch.save(model.state_dict(), f"{model_name}.pth")
-
+            torch.save(model.state_dict(), f"{model_name}_{epoch}_{val_losses[-1]}.pth")
+                       
     print("Entraînement terminé.")
 
 
