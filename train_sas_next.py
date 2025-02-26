@@ -237,9 +237,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, 
                     train_image= img.detach().cpu().squeeze()
                     print("shape")
                     print(train_image.shape)
-                
-                    # add a first empty dimension to use the function
-                    train_image = train_image.unsqueeze(0)
+
                     fig = plot_slices(image=train_image,
                                 
                                         )
@@ -340,13 +338,13 @@ def plot_slices(image):
     ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
     image = image.float().numpy()
     
-    mid_axial = image.shape[2]//2
+    mid_axial = image.shape[0]//2
     # plot X slices before and after the mid-sagittal slice in a grid
     fig, axs = plt.subplots(1, 6, figsize=(15, 3))
     fig.suptitle('Axial Slices')
 
-    for i in range(6):
-        axs[i].imshow(image[:,:, mid_axial-3+i].T, cmap='gray')
+    for i in range(5):
+        axs[i].imshow(image[mid_axial-2+i, :, :].T, cmap='gray')
         axs[i].axis('off')
 
     plt.tight_layout()
