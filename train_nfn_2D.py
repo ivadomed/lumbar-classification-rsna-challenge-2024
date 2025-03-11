@@ -170,63 +170,17 @@ def get_transforms(mode='basic', side='left'):
     return common_transforms
 
 
-"""def get_transforms(mode='basic'):
-    if mode == 'basic':
-        common_transforms = Compose([
-            LoadImaged(keys=['T1','T2']),
-            EnsureChannelFirstd(keys=['T1','T2']),
-            SpatialPadd(keys=['T1','T2'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
-            CenterSpatialCropd(keys=['T1','T2'], roi_size=(6,100, 100)),  # Adjust crop for 2D
-            ExtractMiddleSlicesMosaicD(keys=['T1', 'T2']),
-            ScaleIntensityd(keys=['T1','T2']),
-            NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),
-            ConcatItemsd(keys=["T1","T2"], name="combinaison"),
-            ToTensord(keys=["combinaison"])
-        ])
-    elif mode == 'random':
-        common_transforms = Compose([
-            LoadImaged(keys=['T1','T2']),
-            EnsureChannelFirstd(keys=['T1','T2']),
-            #ExtractMiddleSliceD(keys=['T1', 'T2']),  # Extract the middle slice
-            RandRotated(keys=['T1','T2'], prob=0.5, range_y=0.1),
-            SpatialPadd(keys=['T1','T2'], spatial_size=(6,100, 100)), 
-            RandSpatialCropd(keys=['T1','T2'], roi_size=(6,100, 100), random_size=False),  
-            RandLambdad(keys=['T1','T2'],func=aug_sqrt,prob=0.05,),
-            RandLambdad(keys=['T1','T2'],func=aug_sin,prob=0.05,),
-            RandLambdad(keys=['T1','T2'],func=aug_exp,prob=0.05,),
-            RandLambdad(keys=['T1','T2'],func=aug_sig,prob=0.05, ),
-            RandLambdad(keys=['T1','T2'],func=aug_laplace,prob=0.05,),
-            RandLambdad(keys=['T1','T2'],func=aug_inverse,prob=0.05, ),   
 
-            RandBiasFieldd(keys=['T1','T2'],prob=0.05),
-            RandAffined(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear","bilinear"]), 
-
-            RandGaussianNoised(keys=['T1','T2'], mean=0.0, std=0.1, prob=0.05),
-            RandGaussianSharpend(keys=['T1','T2'], prob=0.05),   
-
-            Rand3DElasticd(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear", "bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
-            
-            ResizeWithPadOrCropd(keys=['T1', 'T2'], spatial_size=(6,100, 100)),
-            ExtractMiddleSlicesMosaicD(keys=['T1', 'T2']),
-            ScaleIntensityd(keys=['T1','T2']),
-            RandScaleIntensityd(keys=['T1','T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
-            ConcatItemsd(keys=["T1","T2"], name="combinaison"),
-            ToTensord(keys=["combinaison"])
-        ])
-    return common_transforms"""
 
 
     
     
 
-def prepare_data(data_dir, csv_file, transform,train, side='left'):
-    data = []
+def prepare_data(data_dir, csv_file):
+    data_right = []
+    data_left = []
     labels_df = pd.read_csv(csv_file)
-    
-    counter = 0
-    counter_augmented = 0
-    proportions = [0,0,0]
-    proportions_augmented = [0,0,0]
+
     # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
@@ -274,45 +228,25 @@ def prepare_data(data_dir, csv_file, transform,train, side='left'):
                             subject_id = (subject.replace('sub-', ''))
                             if 'left' in file:
                                 label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
+                                label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                                # Convertir l'étiquette textuelle en valeur numérique
+                                label_numeric = text2int.get(label, -1)
+                                if label_numeric != -1:
+                                    
+                                    data_left.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
+
+
                             if 'right' in file:
                                 label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
-                                # Flip the image along the appropriate axis (e.g., flipping along x-axis)
-                                t1_image_data = np.flip(t1_image_data, axis=0)  # Flip along the first axis (x-axis)
-                                t2_image_data = np.flip(t2_image_data, axis=0)
-
-                            # Obtenir l'étiquette brute
-                            
-                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
-                            
-                            # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric = text2int.get(label, -1)
-                            
-                            if label_numeric != -1:
-                                proportions[label_numeric] += 1 
-                                counter += 1
-                                proportions_augmented[label_numeric] += 1 
-                                counter_augmented += 1
-
+                                label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                                # Convertir l'étiquette textuelle en valeur numérique
+                                label_numeric = text2int.get(label, -1)
+                                if label_numeric != -1:
+                                    
+                                    data_right.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
                                 
-                                
-                                data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
-
-                                """if train and label_numeric == 2 : 
-                                    for i in range (2):
-                                        proportions_augmented[label_numeric] += 1 
-                                        counter_augmented += 1
-                                
-                                        data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})"""
-
-
-
-    print(f"Nombre de données chargées: {counter}")
-    proportions = [(i/counter) for i in proportions]
-    print(proportions)
-    proportions_augmented = [(i/counter_augmented) for i in proportions_augmented]
-    print(proportions_augmented)
-
-    return data
+                                                            
+    return data_right, data_left
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=1, gamma=2, weight = None):
@@ -328,14 +262,21 @@ class FocalLoss(nn.Module):
         return F_loss
 
 def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=16, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
-    # Préparer les données
-    transform = get_transforms('random')
-    train_data = prepare_data(train_dir, csv_file, transform, train=True)
-    train_dataset = Dataset(train_data, transform)
+    
+    
+    transform_left=get_transforms(mode='random', side='left')
+    transform_right=get_transforms(mode='random', side='right')
+    train_data_right, train_data_left = prepare_data(train_dir, csv_file)
+    train_dataset_right = Dataset(train_data_right, transform_right)
+    train_dataset_left = Dataset(train_data_left, transform_left)
+    train_dataset = ConcatDataset(train_dataset_left,train_dataset_right)
 
-    transform = get_transforms()
-    val_dataset = prepare_data(val_dir, csv_file, transform, train=False)
-    val_dataset = Dataset(val_dataset, transform)
+    transform_left=get_transforms(mode='basic', side='left')
+    transform_right=get_transforms(mode='basic', side='right')
+    val_data_right, val_data_left = prepare_data(val_dir, csv_file)
+    val_dataset_right = Dataset(val_data_right, transform_right)
+    val_dataset_left = Dataset(val_data_left, transform_left)
+    val_dataset = ConcatDataset(val_dataset_left, val_dataset_right)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)

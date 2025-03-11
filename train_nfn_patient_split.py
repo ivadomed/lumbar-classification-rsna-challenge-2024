@@ -10,7 +10,7 @@ from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd
+    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -33,88 +33,80 @@ from augment import *
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
 
-# transformation pipeline for the data
-def get_transforms(mode='basic'):
+def get_transforms(mode='basic', side='left'):
         # Define the transform pipeline with rotation augmentation
     
+    first_transforms = Compose([
+        LoadImaged(keys=['T1','T2']),
+        EnsureChannelFirstd(keys=['T1','T2']),
+        SpatialPadd(keys=['T1','T2'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
+    ])
+
+    right_flip = Compose([
+        Flipd(keys=['image'], spatial_axis=0)])
+
+    second_transforms_basic = Compose([
+        CenterSpatialCropd(keys=['T1','T2'], roi_size=(6,100, 100)),  # Adjust crop for 2D
+        
+        ScaleIntensityd(keys=['T1','T2']),
+        NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),
+        ConcatItemsd(keys=["T1","T2"], name="combinaison"),
+        ToTensord(keys=["combinaison"])
+        ])
+    
+    second_transforms_random = Compose([
+        RandRotated(keys=['T1','T2'], prob=0.5, range_y=0.1),
+        SpatialPadd(keys=['T1','T2'], spatial_size=(6,100, 100)), 
+        RandSpatialCropd(keys=['T1','T2'], roi_size=(6,100, 100), random_size=False),  
+        RandLambdad(keys=['T1','T2'],func=aug_sqrt,prob=0.05,),
+        RandLambdad(keys=['T1','T2'],func=aug_sin,prob=0.05,),
+        RandLambdad(keys=['T1','T2'],func=aug_exp,prob=0.05,),
+        RandLambdad(keys=['T1','T2'],func=aug_sig,prob=0.05, ),
+        RandLambdad(keys=['T1','T2'],func=aug_laplace,prob=0.05,),
+        RandLambdad(keys=['T1','T2'],func=aug_inverse,prob=0.05, ),   
+
+        RandBiasFieldd(keys=['T1','T2'],prob=0.05),
+        RandAffined(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear","bilinear"]), 
+
+        RandGaussianNoised(keys=['T1','T2'], mean=0.0, std=0.1, prob=0.05),
+        RandGaussianSharpend(keys=['T1','T2'], prob=0.05),   
+
+        Rand3DElasticd(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear", "bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
+        
+        ResizeWithPadOrCropd(keys=['T1', 'T2'], spatial_size=(6,100, 100)),
+        
+        ScaleIntensityd(keys=['T1','T2']),
+        RandScaleIntensityd(keys=['T1','T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
+        ConcatItemsd(keys=["T1","T2"], name="combinaison"),
+        ToTensord(keys=["combinaison"])
+        ])
 
     if mode == 'basic':
-        common_transforms = Compose([
-            LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
-            SpatialPadd(keys=['T1','T2'], spatial_size=(6, 100, 100)),  # Padding pour atteindre une taille fixe
-            CenterSpatialCropd(keys=['T1','T2'], roi_size=(6, 100, 100)),  # Crop pour obtenir une taille fixe
-            ScaleIntensityd(keys=['T1','T2']),  # Normalisation de l'intensité pour l'image
-            NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-            ConcatItemsd(keys=["T1","T2"], name="combinaison"),
-            ToTensord(keys=["combinaison"]) 
-        ])
+        if side == 'left':
+            common_transforms = Compose([first_transforms, second_transforms_basic])
+        elif side == 'right':
+            common_transforms = Compose([first_transforms, right_flip, second_transforms_basic])
+
     elif mode == 'random':
-        # same but changing steps as random steps
-        common_transforms = Compose([
-            LoadImaged(keys=['T1','T2']),  # Charge l'image et la segmentation
-            EnsureChannelFirstd(keys=['T1','T2']),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
-            SpatialPadd(keys=['T1','T2'], spatial_size=(6, 100, 100)),  # Padding pour atteindre une taille fixe
-            RandSpatialCropd(keys=['T1','T2'], roi_size=(6, 100, 100), random_size=False),  # Crop pour obtenir une taille fixe
-            RandRotated(keys=['T1','T2'], prob=0.5, range_y=0.1),  # Rotation aléatoire
-            RandLambdad(keys=['T1','T2'],func=aug_sqrt,prob=0.05,),
-            RandLambdad(keys=['T1','T2'],func=aug_sin,prob=0.05,),
-            RandLambdad(keys=['T1','T2'],func=aug_exp,prob=0.05,),
-            RandLambdad(keys=['T1','T2'],func=aug_sig,prob=0.05, ),
-            RandLambdad(keys=['T1','T2'],func=aug_laplace,prob=0.05,),
-            RandLambdad(keys=['T1','T2'],func=aug_inverse,prob=0.05, ),   
-
-            RandBiasFieldd(keys=['T1','T2'],prob=0.05),
-            RandAffined(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear","bilinear"]), 
-
-            RandGaussianNoised(keys=['T1','T2'], mean=0.0, std=0.1, prob=0.05),
-            RandGaussianSharpend(keys=['T1','T2'], prob=0.05),   
-
-            Rand3DElasticd(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear", "bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
-              
-            ResizeWithPadOrCropd(keys=['T1', 'T2'], spatial_size=(6, 100, 100)),
-            RandScaleIntensityd(keys=['T1','T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
-            ConcatItemsd(keys=["T1","T2"], name="combinaison"),
-            ToTensord(keys=["combinaison"]) 
-        ])
+        if side == 'left':
+            common_transforms = Compose([first_transforms, second_transforms_random])
+        elif side == 'right':
+            common_transforms = Compose([first_transforms, right_flip, second_transforms_random])
+    
     return common_transforms
-    
-    
-def plot_slices(image):
-    """
-    Plot the image, ground truth and prediction of the mid-sagittal axial slice
-    The orientaion is assumed to RPI
-    """
-
-    # bring everything to numpy 
-    ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
-    image = image.float().numpy()
-    
-
-    mid_sagittal = image.shape[1]//2
-    # plot X slices before and after the mid-sagittal slice in a grid
-    fig, axs = plt.subplots(2, 6, figsize=(18, 54))
-    fig.suptitle('Original Image')
-    for i in range(6):
-        axs[0, i].imshow(image[0,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[0, i].axis('off') 
-        axs[1, i].imshow(image[1,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[1, i].axis('off') 
-        
-  
-    
-    plt.tight_layout()
-    fig.show()
-    
-    return fig
 
 
-def prepare_data(data_dir, csv_file, transform,train, side='left'):
-    data = []
+
+
+
+    
+    
+
+def prepare_data(data_dir, csv_file):
+    data_right = []
+    data_left = []
     labels_df = pd.read_csv(csv_file)
-    
-    counter = 0
-    counter_augmented = 0
-    proportions = [0,0,0]
-    proportions_augmented = [0,0,0]
+
     # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
@@ -122,7 +114,7 @@ def prepare_data(data_dir, csv_file, transform,train, side='left'):
     
 
         
-        """if counter//3> 15 :
+        """if counter//2> 15 :
             break"""
        
         subject_dir = os.path.join(data_dir, subject, 'anat')
@@ -162,54 +154,71 @@ def prepare_data(data_dir, csv_file, transform,train, side='left'):
                             subject_id = (subject.replace('sub-', ''))
                             if 'left' in file:
                                 label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
+                                label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                                # Convertir l'étiquette textuelle en valeur numérique
+                                label_numeric = text2int.get(label, -1)
+                                if label_numeric != -1:
+                                    
+                                    data_left.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
+
+
                             if 'right' in file:
                                 label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
-                                # Flip the image along the appropriate axis (e.g., flipping along x-axis)
-                                t1_image_data = np.flip(t1_image_data, axis=0)  # Flip along the first axis (x-axis)
-                                t2_image_data = np.flip(t2_image_data, axis=0)
-
-                            # Obtenir l'étiquette brute
-                            
-                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
-                            
-                            # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric = text2int.get(label, -1)
-                            
-                            if label_numeric != -1:
-                                proportions[label_numeric] += 1 
-                                counter += 1
-                                proportions_augmented[label_numeric] += 1 
-                                counter_augmented += 1
+                                label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                                # Convertir l'étiquette textuelle en valeur numérique
+                                label_numeric = text2int.get(label, -1)
+                                if label_numeric != -1:
+                                    
+                                    data_right.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
                                 
-                                data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
+                                                            
+    return data_right, data_left
+    
+def plot_slices(image):
+    """
+    Plot the image, ground truth and prediction of the mid-sagittal axial slice
+    The orientaion is assumed to RPI
+    """
 
-                                """if train and label_numeric == 2 : 
-                                    for i in range (2):
-                                        proportions_augmented[label_numeric] += 1 
-                                        counter_augmented += 1
-                                
-                                        data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})"""
+    # bring everything to numpy 
+    ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
+    image = image.float().numpy()
+    
+
+    mid_sagittal = image.shape[1]//2
+    # plot X slices before and after the mid-sagittal slice in a grid
+    fig, axs = plt.subplots(2, 6, figsize=(18, 54))
+    fig.suptitle('Original Image')
+    for i in range(6):
+        axs[0, i].imshow(image[0,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[0, i].axis('off') 
+        axs[1, i].imshow(image[1,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[1, i].axis('off') 
+        
+  
+    
+    plt.tight_layout()
+    fig.show()
+    
+    return fig
 
 
 
-    print(f"Nombre de données chargées: {counter}")
-    proportions = [(i/counter) for i in proportions]
-    print(proportions)
-    proportions_augmented = [(i/counter_augmented) for i in proportions_augmented]
-    print(proportions_augmented)
- 
-    return data
 
 def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=16, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4, augment=False):
     # Préparer les données
     
-    transform=get_transforms('random')
-    train_data = prepare_data(train_dir, csv_file, transform, train = True)
-    train_dataset = Dataset(train_data, transform)
+    transform_left=get_transforms(mode='random', side='left')
+    transform_right=get_transforms(mode='random', side='right')
+    train_data_right, train_data_left = prepare_data(train_dir, csv_file)
+    train_dataset_right = Dataset(train_data_right, transform_right)
+    train_dataset_left = Dataset(train_data_left, transform_left)
+    train_dataset = ConcatDataset(train_dataset_left,train_dataset_right)
 
-    transform=get_transforms()
-    val_dataset = prepare_data(val_dir, csv_file, transform, train = False)
-    val_dataset = Dataset(val_dataset, transform)
+    transform_left=get_transforms(mode='basic', side='left')
+    transform_right=get_transforms(mode='basic', side='right')
+    val_data_right, val_data_left = prepare_data(val_dir, csv_file)
+    val_dataset_right = Dataset(val_data_right, transform_right)
+    val_dataset_left = Dataset(val_data_left, transform_left)
+    val_dataset = ConcatDataset(val_dataset_left, val_dataset_right)
     # constant key for random gen
         
 
@@ -330,9 +339,10 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=16
 
         val_losses.append(val_loss / len(val_loader))
 
-        wandb.log({"val_loss": val_losses[-1], "epoch": epoch})  # Log training loss
-    
-        print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {100 * correct_predictions / total_predictions}%")
+        accuracy = 100 * correct_predictions / total_predictions
+        wandb.log({"train_loss": train_losses[-1], "accuracy": accuracy,  "epoch": epoch})  # Log training loss
+
+        print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {accuracy}%")
 
         
 
