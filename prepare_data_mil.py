@@ -5,7 +5,7 @@ from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, SpatialPadd, CenterSpatialCropd, NormalizeIntensityd,
     RandRotated, RandSpatialCropd, RandBiasFieldd, Lambdad, Transform,
-    RandGaussianNoised, RandAffined, RandZoomd
+    RandGaussianNoised, RandAffined, RandZoomd, Rand3DElasticd
 )
 from torch.utils.data import DataLoader
 from monai.data import Dataset
@@ -137,7 +137,7 @@ def get_transforms(mode='basic'):
             RandAffined(keys=['image'], prob=1.0, shear_range=(0.3, 0.3, 0.3)),
             Rand3DElasticd(keys=['image'], prob=0.5, sigma_range=(8, 12), magnitude_range=(100, 200)),
             RandGaussianNoised(keys=['image'], prob=0.5, mean=0.0, std=0.1),
-            RandBiasFieldd(keys=['image'], prob=0.5, coeff_range=(0, 0.5)),
+            RandBiasFieldd(keys=['image'], prob=0.5, coeff_range=(0, 0.4)),
             RandZoomd(keys=['image'], prob=0.5, min_zoom=0.95, max_zoom=1.15),
             SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),
             RandSpatialCropd(
@@ -277,13 +277,13 @@ def test_data_preparation(data_dir, csv_file, transform, batches=1):
                             f'Label: {batch["label"][bag_idx].item()}'
                         )
                     plt.tight_layout()
-                    plt.show()
                     plt.savefig(f'sample_1_{bag_idx}.png')
             i += 1
 
 
-'''# for testing
-data_dir = ('/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20250212nii_data_splits')
-csv_file = ('/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/dcom_data/train.csv')
+# for testing
+'''data_dir = ('C:/Users/abels/OneDrive/Documents/NeuroPoly/rsna-challenge/sample_test')
+csv_file = ('C:/Users/abels/OneDrive/Documents/NeuroPoly/rsna-challenge/sample_test/train.csv')
 transform = get_transforms(mode='random')
-test_data_preparation(data_dir, csv_file, transform)'''
+test_data_preparation(data_dir, csv_file, transform)
+'''
