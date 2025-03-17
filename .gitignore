@@ -8,3 +8,6 @@ model*
 models/
 **/wandb/
 **/*run*/
+myenv/
+saved_batches/
+
