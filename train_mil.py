@@ -10,6 +10,8 @@ from prepare_data_mil import prepare_data, get_transforms
 from mil_definition import MILmodel, convnext_small
 import numpy as np
 import matplotlib.pyplot as plt
+import random
+import json
 
 
 # use the challenge's loss function : weighted cross entropy
@@ -182,6 +184,7 @@ def train_model(
     learning_rate=1e-4,
     aux_loss_weight=0,
     aux_loss_schedule='constant',
+    num_layers=1,
     device='cuda'
 ):
     # Initialize wandb
@@ -194,9 +197,14 @@ def train_model(
             "scheduler": "CosineAnnealing",
             "architecture": "ConvNeXt-Small-MIL",
             "aux_loss_weight": aux_loss_weight,
-            "aux_loss_schedule": aux_loss_schedule
+            "aux_loss_schedule": aux_loss_schedule,
+            "num_layers": num_layers
         }
     )
+
+    # create a folder with a random name in the current directory
+    folder_name = f"mil_model_{random.randint(0, 1000000)}"
+    os.makedirs(folder_name, exist_ok=True)
 
     # Prepare data
     train_dir = os.path.join(data_dir, 'training')
@@ -213,7 +221,7 @@ def train_model(
                             shuffle=False, num_workers=4)
 
     # Initialize model
-    model = MILmodel(encoder=convnext_small).to(device)
+    model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
 
     # Loss function - CrossEntropyLoss with class weights if needed
     criterion = nn.CrossEntropyLoss(weight=weight_challenge)
@@ -225,8 +233,8 @@ def train_model(
     # Learning rate scheduler
     scheduler = CosineAnnealingLR(
         optimizer,
-        T_max=len(train_loader) * 8,  # Total number of steps
-        eta_min=1e-6  # Minimum learning rate
+        T_max=len(train_loader) * 6,  # Total number of steps
+        eta_min=8e-7  # Minimum learning rate
     )
 
     def get_aux_weight(epoch):
@@ -278,6 +286,7 @@ def train_model(
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            # save the model in a folder with rando
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
@@ -286,8 +295,14 @@ def train_model(
                 'val_loss': val_loss,
                 'val_main_acc': val_main_acc,
                 'val_aux_acc': val_aux_acc,
-            }, 'best_mil_model.pth')
+            }, os.path.join(folder_name, f"best_mil_model.pth"))
             print(f"Saved new best model with validation loss: {val_loss:.4f}")
+
+    # adds a json file in the folder with the config and the best loss
+    with open(os.path.join(folder_name, 'config.json'), 'w') as f:
+        json.dump(wandb.config, f)
+    with open(os.path.join(folder_name, 'best_loss.json'), 'w') as f:
+        json.dump({'best_loss': best_val_loss}, f)
 
     wandb.finish()
     return model
@@ -306,10 +321,11 @@ if __name__ == "__main__":
     model = train_model(
         data_dir=data_dir,
         csv_file=csv_file,
-        num_epochs=12,
+        num_epochs=10,
         batch_size=8,
         learning_rate=5e-5,
         aux_loss_weight=0,
         aux_loss_schedule='constant',
+        num_layers=1,  # 0 pour désactiver le RNN
         device=device
     )

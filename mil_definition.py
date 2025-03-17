@@ -14,11 +14,12 @@ import timm
 
 # define a MIL model
 class MILsection(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_classes):
+    def __init__(self, input_dim, hidden_dim, num_classes, num_layers=1):
         super(MILsection, self).__init__()
-        # here add a RNN bidirectional layer, to get contex
-        # self.lstm = nn.LSTM(input_dim, input_dim//2, num_layers=2,
-        # batch_first=True, dropout=0.1, bidirectional=True)
+        self.num_layers = num_layers
+        if num_layers > 0:
+            self.rnn = nn.GRU(input_dim, input_dim//2, num_layers=num_layers,
+                             batch_first=True, dropout=0.1, bidirectional=True)
         self.aux_attention = nn.Sequential(
             nn.Tanh(),
             nn.Linear(input_dim, 1)
@@ -37,17 +38,20 @@ class MILsection(nn.Module):
             logits: (batch_size, num_classes)
         """
         batch_size, num_instances, input_dim = bags.size()
-        # bags_lstm, _ = self.lstm(bags)
-        bags_lstm = bags
+
+        if self.num_layers > 0:
+            bags_rnn, _ = self.rnn(bags)
+        else:
+            bags_rnn = bags
         
         # Main attention
-        attn_scores = self.attention(bags_lstm).squeeze(-1)  # [batch_size, num_instances]
+        attn_scores = self.attention(bags_rnn).squeeze(-1)  # [batch_size, num_instances]
         attn_weights = torch.softmax(attn_scores, dim=-1)  # [batch_size, num_instances]
-        weighted_instances = torch.bmm(attn_weights.unsqueeze(1), bags_lstm).squeeze(1)  # [batch_size, input_dim]
+        weighted_instances = torch.bmm(attn_weights.unsqueeze(1), bags_rnn).squeeze(1)  # [batch_size, input_dim]
         
         # Auxiliary attention - process each instance independently
-        aux_attn_scores = self.aux_attention(bags_lstm).squeeze(-1)  # [batch_size, num_instances]
-        aux_features = bags_lstm  # [batch_size, num_instances, input_dim]
+        aux_attn_scores = self.aux_attention(bags_rnn).squeeze(-1)  # [batch_size, num_instances]
+        aux_features = bags_rnn  # [batch_size, num_instances, input_dim]
         
         return weighted_instances, aux_features
 
@@ -56,7 +60,7 @@ class MILsection(nn.Module):
 # uses the MILsection model and a ConvNext Small as a feature extractor
 # note that loads of hyperparameters could be included as arguments
 class MILmodel(nn.Module):
-    def __init__(self, encoder):
+    def __init__(self, encoder, num_layers=1):
         super(MILmodel, self).__init__()
         # encoder
         self.encoder = encoder
@@ -70,7 +74,9 @@ class MILmodel(nn.Module):
         
         # MIL section, loads of hyperparameters here also
         self.mil_section = MILsection(input_dim=self.feature_size,
-                                      hidden_dim=1024, num_classes=3)
+                                    hidden_dim=1024, 
+                                    num_classes=3,
+                                    num_layers=num_layers)
         # classifier output
         self.classifier = nn.Linear(self.feature_size, 3)
         # aux classifier output - now takes each instance independently
