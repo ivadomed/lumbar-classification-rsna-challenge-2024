@@ -249,8 +249,8 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Set paths
-    data_dir = 'path/to/your/data'  # Update with your data path
-    csv_file = 'path/to/your/train.csv'  # Update with your CSV path
+    data_dir = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20250212nii_data_splits'  # Update with your data path
+    csv_file = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/dcom_data/train.csv'  # Update with your CSV path
 
     # Train model
     model = train_model(
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         num_epochs=20,
         batch_size=8,
         learning_rate=1e-4,
-        aux_loss_weight=0.5,
+        aux_loss_weight=0,
         aux_loss_schedule='constant',
         device=device
     )

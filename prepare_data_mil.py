@@ -203,9 +203,10 @@ def test_data_preparation(data_dir, csv_file, transform, batches=1):
             i += 1
 
 
-data_dir = ('C:/Users/abels/OneDrive/Documents/Neuropoly/'
+# for testing
+'''data_dir = ('C:/Users/abels/OneDrive/Documents/Neuropoly/'
             'rsna-challenge/sample_test')
 csv_file = ('C:/Users/abels/OneDrive/Documents/Neuropoly/'
             'rsna-challenge/sample_test/train.csv')
 transform = get_transforms(mode='random')
-test_data_preparation(data_dir, csv_file, transform)
+test_data_preparation(data_dir, csv_file, transform)'''
