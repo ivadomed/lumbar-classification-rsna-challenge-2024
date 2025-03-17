@@ -39,12 +39,17 @@ class MILsection(nn.Module):
         batch_size, num_instances, input_dim = bags.size()
         # bags_lstm, _ = self.lstm(bags)
         bags_lstm = bags
-        attn_scores = self.attention(bags_lstm).squeeze(-1)
-        aux_attn_scores = self.aux_attention(bags_lstm).squeeze(-1)
-        attn_weights = torch.softmax(attn_scores, dim=-1)
-        weighted_instances = torch.bmm(attn_weights.unsqueeze(1),
-                                       bags_lstm).squeeze(1)
-        return weighted_instances, aux_attn_scores
+        
+        # Main attention
+        attn_scores = self.attention(bags_lstm).squeeze(-1)  # [batch_size, num_instances]
+        attn_weights = torch.softmax(attn_scores, dim=-1)  # [batch_size, num_instances]
+        weighted_instances = torch.bmm(attn_weights.unsqueeze(1), bags_lstm).squeeze(1)  # [batch_size, input_dim]
+        
+        # Auxiliary attention - process each instance independently
+        aux_attn_scores = self.aux_attention(bags_lstm).squeeze(-1)  # [batch_size, num_instances]
+        aux_features = bags_lstm  # [batch_size, num_instances, input_dim]
+        
+        return weighted_instances, aux_features
 
 
 # here define the whole MIL model
@@ -57,42 +62,50 @@ class MILmodel(nn.Module):
         self.encoder = encoder
         # flattening layer, applying pooling and flattening
         # note here that we could try different pooling methods
-        self.flatten = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten(1))
-        self.feature_size = self.encoder.feature_size
+        self.flatten = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(1)
+        )
+        self.feature_size = self.encoder.num_features
+        
         # MIL section, loads of hyperparameters here also
         self.mil_section = MILsection(input_dim=self.feature_size,
                                       hidden_dim=1024, num_classes=3)
         # classifier output
         self.classifier = nn.Linear(self.feature_size, 3)
-        # aux classifier output
-        self.aux_output = nn.Linear(self.feature_size, 3)
+        # aux classifier output - now takes each instance independently
+        self.aux_classifier = nn.Linear(self.feature_size, 3)
 
     def forward(self, x):
         # x shape: (batch_size, 6, 1, 384, 384)
         batch_size, num_instances, channels, H, W = x.shape
 
         # Reshape to process all instances through encoder
-        x = x.view(-1, channels, H, W)  # shape: (batch_size * 6, 1, 384, 384)
-
+        x = x.reshape(-1, channels, H, W)  # shape: (batch_size * 6, 1, 384, 384)
+        
         # Pass through encoder
-        x = self.encoder(x)  # shape: (batch_size * 6, feature_size, h', w')
-
+        x = self.encoder.forward_features(x)  # shape: (batch_size * 6, feature_size, h', w')
+        
         # Apply pooling and flatten
         x = self.flatten(x)  # shape: (batch_size * 6, feature_size)
-
+        
         # Reshape back to separate instances
-        x = x.view(batch_size, num_instances, -1)
-        # shape: (batch_size, 6, feature_size)
-
+        x = x.reshape(batch_size, num_instances, self.feature_size)  # shape: (batch_size, 6, feature_size)
+        
         # Pass through MIL section
-        x, aux_output = self.mil_section(x)
-        # shape: (batch_size, feature_size), (batch_size, 6)
-
-        # Final classifications
-        output = self.classifier(x)  # shape: (batch_size, 3)
-        output_aux = self.aux_output(aux_output)  # shape: (batch_size, 3)
-
-        return output, output_aux
+        weighted_instances, aux_features = self.mil_section(x)
+        # weighted_instances: (batch_size, feature_size)
+        # aux_features: (batch_size, num_instances, feature_size)
+        
+        # Main classification
+        main_output = self.classifier(weighted_instances)  # shape: (batch_size, 3)
+        
+        # Auxiliary classification - apply to each instance independently
+        aux_output = self.aux_classifier(aux_features)  # shape: (batch_size, num_instances, 3)
+        # Average the auxiliary predictions across instances
+        aux_output = aux_output.mean(dim=1)  # shape: (batch_size, 3)
+        
+        return main_output, aux_output
 
 
 convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',

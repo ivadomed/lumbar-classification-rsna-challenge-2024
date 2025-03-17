@@ -9,6 +9,7 @@ from tqdm import tqdm
 from prepare_data_mil import prepare_data, get_transforms
 from mil_definition import MILmodel, convnext_small
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 # use the challenge's loss function : weighted cross entropy
@@ -24,7 +25,8 @@ def train_epoch(
     optimizer,
     scheduler,
     device,
-    aux_weight
+    aux_weight,
+    epoch=None  # Add epoch parameter
 ):
     model.train()
     running_loss = 0.0
@@ -33,11 +35,15 @@ def train_epoch(
     total = 0
 
     pbar = tqdm(train_loader, desc='Training')
-    for batch in pbar:
+    for i, batch in enumerate(pbar):
         # Get data
         bags = batch['bag'].to(device)  # Shape: [B, 6, 1, 384, 384]
         labels = batch['label'].to(device)  # Shape: [B]
 
+        # Visualize first batch of each epoch (after moving to device)
+        if i == 0 and epoch is not None:
+            visualize_batch(batch, epoch)
+            
         # Zero gradients
         optimizer.zero_grad()
 
@@ -120,6 +126,54 @@ def validate(model, val_loader, criterion, device, aux_weight):
     return val_loss, main_acc, aux_acc
 
 
+def visualize_batch(batch, epoch):
+    """
+    Visualize a batch of images and save them to wandb
+    batch: dictionary containing 'bag' tensor of shape [B, 6, 1, 384, 384] and 'label'
+    epoch: current epoch number
+    """
+    try:
+        # Get the first batch and ensure it's on CPU
+        images = batch['bag'].cpu().detach()  # Shape: [B, 6, 1, 384, 384]
+        labels = batch['label'].cpu().detach()
+        
+        # Take only the first 4 samples to avoid too large figures
+        n_samples = min(4, images.shape[0])
+        
+        # Create a figure with subplots for each sample and its 6 slices
+        fig, axes = plt.subplots(n_samples, 6, figsize=(20, 4*n_samples))
+        if n_samples == 1:
+            axes = axes[None, :]  # Add dimension for consistent indexing
+        
+        for i in range(n_samples):
+            for j in range(6):
+                # Get the image slice and ensure it's a valid image
+                img = images[i, j, 0].numpy()
+                
+                # Normalize the image for better visualization
+                img = (img - img.min()) / (img.max() - img.min() + 1e-8)
+                
+                # Plot the image
+                axes[i, j].imshow(img, cmap='gray')
+                axes[i, j].axis('off')
+                
+                # Add title only to the first row
+                if i == 0:
+                    axes[i, j].set_title(f'Slice {j+1}')
+            
+            # Add label information on the left
+            axes[i, 0].set_ylabel(f'Sample {i+1}\nLabel: {labels[i].item()}')
+        
+        plt.tight_layout()
+        
+        # Log to wandb
+        wandb.log({f"batch_visualization_epoch_{epoch}": wandb.Image(fig)})
+        plt.close(fig)
+    except Exception as e:
+        print(f"Warning: Could not visualize batch: {str(e)}")
+        plt.close('all')  # Ensure all figures are closed in case of error
+
+
 def train_model(
     data_dir,
     csv_file,
@@ -148,14 +202,9 @@ def train_model(
     train_dir = os.path.join(data_dir, 'training')
     val_dir = os.path.join(data_dir, 'validation')
 
-    # Get transforms
-    transform = get_transforms(mode='basic')  # Use basic for validation
-    # Use augmentation for training
-    train_transform = get_transforms(mode='random')
-
     # Create datasets
-    train_data = prepare_data(train_dir, csv_file, train_transform)
-    val_data = prepare_data(val_dir, csv_file, transform)
+    train_data = prepare_data(train_dir, csv_file, random=True)
+    val_data = prepare_data(val_dir, csv_file, random=False)
 
     # Create dataloaders
     train_loader = DataLoader(train_data, batch_size=batch_size,
@@ -176,7 +225,7 @@ def train_model(
     # Learning rate scheduler
     scheduler = CosineAnnealingLR(
         optimizer,
-        T_max=len(train_loader) * num_epochs,  # Total number of steps
+        T_max=len(train_loader) * 8,  # Total number of steps
         eta_min=1e-6  # Minimum learning rate
     )
 
@@ -203,7 +252,8 @@ def train_model(
         # Train
         train_loss, train_main_acc, train_aux_acc = train_epoch(
             model, train_loader, criterion, optimizer, scheduler, device,
-            aux_weight=current_aux_weight
+            aux_weight=current_aux_weight,
+            epoch=epoch  # Pass the epoch number
         )
 
         # Validate
@@ -256,9 +306,9 @@ if __name__ == "__main__":
     model = train_model(
         data_dir=data_dir,
         csv_file=csv_file,
-        num_epochs=20,
+        num_epochs=12,
         batch_size=8,
-        learning_rate=1e-4,
+        learning_rate=5e-5,
         aux_loss_weight=0,
         aux_loss_schedule='constant',
         device=device

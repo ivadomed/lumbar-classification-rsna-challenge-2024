@@ -10,4 +10,4 @@ models/
 **/*run*/
 myenv/
 saved_batches/
-
+*.csv
