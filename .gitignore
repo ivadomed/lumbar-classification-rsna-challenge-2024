@@ -11,3 +11,4 @@ models/
 myenv/
 saved_batches/
 *.csv
+mil_model_*
