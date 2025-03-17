@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 import wandb
 from tqdm import tqdm
 from prepare_data_mil import prepare_data, get_transforms
-from model_mil import MILmodel, convnext_small
+from mil_definition import MILmodel, convnext_small
 import numpy as np
 
 
