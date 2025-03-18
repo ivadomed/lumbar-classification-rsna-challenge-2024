@@ -182,6 +182,8 @@ def train_model(
     num_epochs=20,
     batch_size=8,
     learning_rate=1e-4,
+    encoder_lr=1e-5,  # Learning rate spécifique pour le ConvNext
+    freeze_encoder_epoch=5,  # Époque à partir de laquelle on freeze le ConvNext
     aux_loss_weight=0,
     aux_loss_schedule='constant',
     num_layers=1,
@@ -194,6 +196,8 @@ def train_model(
             "epochs": num_epochs,
             "batch_size": batch_size,
             "learning_rate": learning_rate,
+            "encoder_lr": encoder_lr,
+            "freeze_encoder_epoch": freeze_encoder_epoch,
             "scheduler": "CosineAnnealing",
             "architecture": "ConvNeXt-Small-MIL",
             "aux_loss_weight": aux_loss_weight,
@@ -226,9 +230,15 @@ def train_model(
     # Loss function - CrossEntropyLoss with class weights if needed
     criterion = nn.CrossEntropyLoss(weight=weight_challenge)
 
-    # Optimizer
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate,
-                            weight_decay=0.01)
+    # Séparer les paramètres du ConvNext et du reste du modèle
+    encoder_params = model.encoder.parameters()
+    other_params = [p for n, p in model.named_parameters() if not n.startswith('encoder')]
+
+    # Optimizer avec learning rates différents
+    optimizer = optim.AdamW([
+        {'params': encoder_params, 'lr': encoder_lr},
+        {'params': other_params, 'lr': learning_rate}
+    ], weight_decay=0.01)
 
     # Learning rate scheduler
     scheduler = CosineAnnealingLR(
@@ -241,10 +251,8 @@ def train_model(
         if aux_loss_schedule == 'constant':
             return aux_loss_weight
         elif aux_loss_schedule == 'linear_decay':
-            # Décroissance linéaire de aux_loss_weight à 0
             return aux_loss_weight * (1 - epoch / num_epochs)
         elif aux_loss_schedule == 'cosine_decay':
-            # Décroissance en cosinus de aux_loss_weight à 0
             return aux_loss_weight * np.cos(np.pi * epoch / (2 * num_epochs))
         else:
             raise ValueError(f"Unknown schedule: {aux_loss_schedule}")
@@ -254,6 +262,12 @@ def train_model(
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
 
+        # Freeze le ConvNext après freeze_encoder_epoch époques
+        if epoch >= freeze_encoder_epoch:
+            for param in model.encoder.parameters():
+                param.requires_grad = False
+            print("ConvNext encoder frozen")
+
         # Get current auxiliary loss weight
         current_aux_weight = get_aux_weight(epoch)
 
@@ -261,7 +275,7 @@ def train_model(
         train_loss, train_main_acc, train_aux_acc = train_epoch(
             model, train_loader, criterion, optimizer, scheduler, device,
             aux_weight=current_aux_weight,
-            epoch=epoch  # Pass the epoch number
+            epoch=epoch
         )
 
         # Validate
@@ -280,7 +294,8 @@ def train_model(
             "val_main_acc": val_main_acc,
             "val_aux_acc": val_aux_acc,
             "learning_rate": scheduler.get_last_lr()[0],
-            "aux_loss_weight": current_aux_weight
+            "aux_loss_weight": current_aux_weight,
+            "encoder_frozen": epoch >= freeze_encoder_epoch
         })
 
         # Save best model
@@ -300,7 +315,7 @@ def train_model(
 
     # adds a json file in the folder with the config and the best loss
     with open(os.path.join(folder_name, 'config.json'), 'w') as f:
-        json.dump(wandb.config, f)
+        json.dump(dict(wandb.config), f)
     with open(os.path.join(folder_name, 'best_loss.json'), 'w') as f:
         json.dump({'best_loss': best_val_loss}, f)
 
@@ -324,8 +339,10 @@ if __name__ == "__main__":
         num_epochs=10,
         batch_size=8,
         learning_rate=5e-5,
+        encoder_lr=5e-5,  # Learning rate plus faible pour le ConvNext
+        freeze_encoder_epoch=3,  # Freeze le ConvNext après 3 époques
         aux_loss_weight=0,
         aux_loss_schedule='constant',
-        num_layers=1,  # 0 pour désactiver le RNN
+        num_layers=1,  # Un seul layer de GRU comme suggéré
         device=device
     )
