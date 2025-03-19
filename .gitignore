@@ -9,3 +9,5 @@ models/
 **/wandb/
 **/*run*/
 *.png
+nrc-lumbar-balgrist
+*.csv

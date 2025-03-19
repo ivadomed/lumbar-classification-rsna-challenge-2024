@@ -37,48 +37,47 @@ def get_transforms(mode='basic', side='left'):
     # Define the transform pipeline with rotation augmentation
     
     first_transforms = [
-        LoadImaged(keys=['T1','T2']),
-        EnsureChannelFirstd(keys=['T1','T2']),
+        LoadImaged(keys=['T1']),
+        EnsureChannelFirstd(keys=['T1']),
         #Spacingd(keys=['T1','T2'], pixdim=(0.4, 0.4, 0.4), mode=('bilinear')),
-        SpatialPadd(keys=['T1','T2'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
+        SpatialPadd(keys=['T1'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
     ]
 
     right_flip = [
-        Flipd(keys=['T1','T2'], spatial_axis=2)
+        #Flipd(keys=['T1'], spatial_axis=0)
         ]
 
     second_transforms_basic = [
-        CenterSpatialCropd(keys=['T1','T2'], roi_size=(6,100, 100)),  # Adjust crop for 2D
-        ScaleIntensityd(keys=['T1','T2']), 
-        NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),
-        ConcatItemsd(keys=["T1","T2"], name="combinaison"),
-        ToTensord(keys=["combinaison"])
+        CenterSpatialCropd(keys=['T1'], roi_size=(6,100, 100)),  # Adjust crop for 2D
+        ScaleIntensityd(keys=['T1']), 
+        NormalizeIntensityd(keys=['T1'], nonzero=True, channel_wise=True),
+        ToTensord(keys=['T1'])
         ]
     
     second_transforms_random = [
-        RandRotated(keys=['T1','T2'], prob=0.5, range_y=0.1),
-        SpatialPadd(keys=['T1','T2'], spatial_size=(6,100, 100)), 
-        RandSpatialCropd(keys=['T1','T2'], roi_size=(6,100, 100), random_size=False),  
-        RandRotated(keys=['T1','T2'], prob=0.5, range_y=0.1),  # Rotation aléatoire
-        RandLambdad(keys=['T1','T2'],func=aug_sqrt,prob=0.05,),
-        RandLambdad(keys=['T1','T2'],func=aug_sin,prob=0.05,),
-        RandLambdad(keys=['T1','T2'],func=aug_exp,prob=0.05,),
-        RandLambdad(keys=['T1','T2'],func=aug_sig,prob=0.05, ),
-        RandLambdad(keys=['T1','T2'],func=aug_laplace,prob=0.05,),
-        RandLambdad(keys=['T1','T2'],func=aug_inverse,prob=0.05, ),   
-        RandBiasFieldd(keys=['T1','T2'],prob=0.05),
-        RandAffined(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear","bilinear"]), 
+        RandRotated(keys=['T1'], prob=0.5, range_y=0.1),
+        RandFlipd(keys=['T1'], prob=0.5, spatial_axis=0),
+        SpatialPadd(keys=['T1'], spatial_size=(6,100, 100)), 
+        RandSpatialCropd(keys=['T1'], roi_size=(6,100, 100), random_size=False),  
+        RandRotated(keys=['T1'], prob=0.5, range_y=0.1),  # Rotation aléatoire
+        RandLambdad(keys=['T1'],func=aug_sqrt,prob=0.05,),
+        RandLambdad(keys=['T1'],func=aug_sin,prob=0.05,),
+        RandLambdad(keys=['T1'],func=aug_exp,prob=0.05,),
+        RandLambdad(keys=['T1'],func=aug_sig,prob=0.05, ),
+        RandLambdad(keys=['T1'],func=aug_laplace,prob=0.05,),
+        RandLambdad(keys=['T1'],func=aug_inverse,prob=0.05, ),   
+        RandBiasFieldd(keys=['T1'],prob=0.05),
+        RandAffined(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
 
-        RandGaussianNoised(keys=['T1','T2'], mean=0.0, std=0.1, prob=0.05),
-        RandGaussianSharpend(keys=['T1','T2'], prob=0.05),   
+        RandGaussianNoised(keys=['T1'], mean=0.0, std=0.1, prob=0.05),
+        RandGaussianSharpend(keys=['T1'], prob=0.05),   
 
-        Rand3DElasticd(keys=['T1','T2'],prob=0.05, padding_mode="zeros", mode=["bilinear", "bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
+        Rand3DElasticd(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
 
-        ResizeWithPadOrCropd(keys=['T1', 'T2'], spatial_size=(6, 100, 100)),
-        RandScaleIntensityd(keys=['T1','T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
-        NormalizeIntensityd(keys=['T1','T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-        ConcatItemsd(keys=["T1","T2"], name="combinaison"),
-        ToTensord(keys=["combinaison"]) 
+        ResizeWithPadOrCropd(keys=['T1'], spatial_size=(6, 100, 100)),
+        RandScaleIntensityd(keys=['T1'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
+        NormalizeIntensityd(keys=['T1'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
+        ToTensord(keys=['T1'])
         ]
 
     if mode == 'basic':
@@ -115,32 +114,25 @@ def prepare_data(data_dir, csv_file):
     
 
         
-        if counter//2> 15 :
-            break
+        """if counter//2> 15 :
+            break"""
        
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
                 if '_patch.nii.gz' in file and 'foramen' in file and 'T1w' in file:
-                    t1_path = os.path.join(subject_dir, file)
+                    t2_path = os.path.join(subject_dir, file)
                     
-                    parts = t1_path.split('_')
+                    parts = t2_path.split('_')
 
                     disk_level = f"{parts[-5]}_{parts[-4]}"
               
-                    for t2_file in os.listdir(subject_dir):
-                        if 'right' in file and 'left' in t2_file: 
-                            None 
-                        elif 'left' in file and 'right' in t2_file: 
-                            None
-                        else :
-                            if disk_level in t2_file and 'foramen' in t2_file and 'T2w' in t2_file:
-                                t2_path = os.path.join(subject_dir,  t2_file)
+                    
                                 
                                 
 
-                    if os.path.exists(t1_path):
+                    if os.path.exists(t2_path):
                         
                         subject_id = (subject.replace('sub-', ''))
                         if 'left' in file:
@@ -150,7 +142,7 @@ def prepare_data(data_dir, csv_file):
                             label_numeric = text2int.get(label, -1)
                             if label_numeric != -1:
                                 
-                                data_left.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
+                                data_left.append({"T1": t2_path, "label": label_numeric})
                                 counter +=1 
 
 
@@ -161,7 +153,7 @@ def prepare_data(data_dir, csv_file):
                             label_numeric = text2int.get(label, -1)
                             if label_numeric != -1:
                                 
-                                data_right.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
+                                data_right.append({"T1": t2_path, "label": label_numeric})
                                 counter +=1
                         
     print(counter)                                  
@@ -178,13 +170,12 @@ def plot_slices(image):
     image = image.float().numpy()
     
 
-    mid_sagittal = image.shape[1]//2
+    mid_sagittal = image.shape[0]//2
     # plot X slices before and after the mid-sagittal slice in a grid
-    fig, axs = plt.subplots(2, 6, figsize=(18, 54))
+    fig, axs = plt.subplots(1, 6, figsize=(18, 54))
     fig.suptitle('Original Image')
     for i in range(6):
-        axs[0, i].imshow(image[0,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[0, i].axis('off') 
-        axs[1, i].imshow(image[1,mid_sagittal-3+i,:,:].T, cmap='gray'); axs[1, i].axis('off') 
+        axs[i].imshow(image[mid_sagittal-3+i,:,:].T, cmap='gray'); axs[i].axis('off') 
         
   
     
@@ -224,7 +215,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
             layers=layers,
             block_inplanes=[64, 128, 256, 512],
             spatial_dims=3,
-            n_input_channels=2,
+            n_input_channels=1,
             num_classes=3,
             ).cuda()
     
@@ -264,8 +255,8 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
         counter = 0 
 
         for batch in tqdm(train_loader):
-            inputs = batch["combinaison"].cuda()
-            if counter%1 == 0 : 
+            inputs = batch["T1"].cuda()
+            if counter%500 == 0 : 
                 train_image= inputs[0].detach().cpu().squeeze()
                 
 
@@ -312,10 +303,10 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
             for batch in tqdm(val_loader):
                 
                 
-                inputs = batch["combinaison"].cuda()
+                inputs = batch["T1"].cuda()
                 labels = batch["label"].cuda()
 
-                if counter%5 == 0 : 
+                if counter%500 == 0 : 
                     val_image= inputs[0].detach().cpu().squeeze()
                     
 
@@ -398,7 +389,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=8, lr=2e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
 
     wandb.finish()  
 

@@ -15,6 +15,7 @@ from monai.networks.nets import ResNet
 import torch.optim as optim
 from torchcam.methods import SmoothGradCAMpp
 
+
 # Weight tensor for weighted loss function (if needed)
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
@@ -38,11 +39,10 @@ def prepare_data(data_dir, csv_file, transform):
     labels_df = pd.read_csv(csv_file)
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     counter = 0 
-    
     for subject in os.listdir(data_dir):
-        """if counter > 10: 
-            break"""
         subject_dir = os.path.join(data_dir, subject, 'anat')
+        """if counter > 5: 
+            break """
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 if '_patch.nii.gz' in file and 'foramen' in file and 'T1w' in file:
@@ -64,57 +64,40 @@ def prepare_data(data_dir, csv_file, transform):
                             label_numeric = text2int.get(label, -1)
                             if label_numeric != -1:
                                 data.append({"T1": t1_path, "T2": t2_path, "label": label_numeric, "combinaison": None})
-                                counter+=1
+                                counter += 1 
     return Dataset(data=data, transform=transform)
 
 # Inference and confusion matrix function
-def inference_and_confusion_matrix(model, val_loader, device, output_csv="predictions.csv"):
+def inference_and_confusion_matrix(model, val_loader, device):
     model.eval()
+    #cam_extractor = SmoothGradCAMpp(model)
     true_labels = []
     predicted_labels = []
-    subject_ids = []
-    all_predictions = []
-    
+
     with torch.no_grad():
+        print(len(val_loader))
         for batch in val_loader:
             inputs = batch["combinaison"].cuda()
             labels = batch["label"].cuda()
             outputs = model(inputs)
-            probabilities = torch.nn.functional.softmax(outputs, dim=1).cpu().numpy()
             _, predicted = torch.max(outputs, 1)
-            
             true_labels.extend(labels.cpu().numpy())
             predicted_labels.extend(predicted.cpu().numpy())
-            all_predictions.extend(probabilities)
-            
-            # Assuming subject_id is stored in batch (modify if needed)
-            if "subject_id" in batch:
-                subject_ids.extend(batch["subject_id"])
-            else:
-                subject_ids.extend([None] * len(labels))
+            print(f'label{labels.cpu().numpy()}')
+            print(f'predicted{predicted.cpu().numpy()}')
+            """activation_map = cam_extractor(outputs.squeeze(0).argmax().item(), outputs)
+            plt.imshow(activation_map[0].squeeze(0).numpy()); plt.axis('off'); plt.tight_layout(); plt.show()
+            """
     
-    # Save predictions to CSV
-    df = pd.DataFrame({
-        "Subject_ID": subject_ids,
-        "True_Label": true_labels,
-        "Predicted_Label": predicted_labels,
-        "Prob_Normal": [p[0] for p in all_predictions],
-        "Prob_Moderate": [p[1] for p in all_predictions],
-        "Prob_Severe": [p[2] for p in all_predictions]
-    })
-    df.to_csv(output_csv, index=False)
-    
-    # Compute and plot confusion matrix
     cm = confusion_matrix(true_labels, predicted_labels)
+    
+    # Plot confusion matrix
     plt.figure(figsize=(6, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=["Normal", "Moderate", "Severe"], 
-                yticklabels=["Normal", "Moderate", "Severe"])
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Normal", "Moderate", "Severe"], yticklabels=["Normal", "Moderate", "Severe"])
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
     plt.savefig('confusion_matrix_nfn.png')
-
 
 # Inference only function
 def run_inference(device, model_weights_path, val_dir, csv_file, batch_size=4):

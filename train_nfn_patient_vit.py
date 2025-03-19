@@ -12,7 +12,7 @@ from monai.transforms import (
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
     ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd
 )
-from monai.networks.nets import DenseNet201, ResNet
+from monai.networks.nets import DenseNet201, ResNet, ViT 
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
 import torch.optim as optim
@@ -39,12 +39,11 @@ def get_transforms(mode='basic', side='left'):
     first_transforms = [
         LoadImaged(keys=['T1','T2']),
         EnsureChannelFirstd(keys=['T1','T2']),
-        #Spacingd(keys=['T1','T2'], pixdim=(0.4, 0.4, 0.4), mode=('bilinear')),
         SpatialPadd(keys=['T1','T2'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
     ]
 
     right_flip = [
-        Flipd(keys=['T1','T2'], spatial_axis=2)
+        Flipd(keys=['T1','T2'], spatial_axis=0)
         ]
 
     second_transforms_basic = [
@@ -115,8 +114,8 @@ def prepare_data(data_dir, csv_file):
     
 
         
-        if counter//2> 15 :
-            break
+        """if counter//2> 15 :
+            break"""
        
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
@@ -219,14 +218,23 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
     # Définir le modèle, la loss function et l'optimiseur
-    model = ResNet(
+    """model = ResNet(
             block="bottleneck",
             layers=layers,
             block_inplanes=[64, 128, 256, 512],
             spatial_dims=3,
             n_input_channels=2,
             num_classes=3,
-            ).cuda()
+            ).cuda()"""
+
+    model = ViT(
+        in_channels=2, 
+        img_size=(6,100, 100), 
+        patch_size=(1,10,10),
+        classification=True,
+        num_classes=3,
+        dropout_rate=0.1
+    ).cuda()
     
     # hyperparameters
     hyperparameters = {
@@ -265,7 +273,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
 
         for batch in tqdm(train_loader):
             inputs = batch["combinaison"].cuda()
-            if counter%1 == 0 : 
+            if counter%5 == 0 : 
                 train_image= inputs[0].detach().cpu().squeeze()
                 
 
@@ -281,7 +289,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
             
             # Forward pass
             optimizer.zero_grad()
-            outputs = model(inputs)
+            outputs = model(inputs)[0]
             loss = criterion(outputs, labels)
 
             # Backward pass et optimisation
@@ -327,7 +335,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
                     plt.close(fig)
 
                 # Forward pass
-                outputs = model(inputs)
+                outputs = model(inputs)[0]
                 loss = criterion(outputs, labels)
 
                 val_loss += loss.item()
@@ -390,6 +398,7 @@ def main():
     csv_file = "../../duke/public/rsna_challenge/dcom_data/train.csv"
     
 
+
     
    # Specify the GPU index (0, 1, 2, ...)
     
@@ -398,7 +407,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=8, lr=2e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=32, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3])
 
     wandb.finish()  
 
