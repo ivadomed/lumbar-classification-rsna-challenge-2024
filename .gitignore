@@ -1,0 +1,11 @@
+totalspineseg/
+__pycache__
+output.csv
+dataset_split.csv
+model*
+*.pth
+20*
+models/
+**/wandb/
+**/*run*/
+*.png
