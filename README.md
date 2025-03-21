@@ -9,6 +9,6 @@ For now the inference works if the folder respects the BIDS hierarchy and the sa
 If the axial acquisition contain: 
 - acq-ax 
 
-need to reorient scans to LPI
+Need to reorient scans to LPI
 
 
