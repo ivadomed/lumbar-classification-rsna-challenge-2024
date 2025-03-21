@@ -180,7 +180,7 @@ def transform_seg2image(
 
 
 # function for sagittal patches
-def patch_extraction_foraminal(vol, mask, affine):
+def patch_extraction_foraminal(vol, mask, affine, pixdim):
     """
     Extract two 3D patches from an MRI volume centered around mask's centroid
     
@@ -202,7 +202,8 @@ def patch_extraction_foraminal(vol, mask, affine):
     centroid = get_shifted_point_along_disk(mask).astype(int)
 
     # Get voxel sizes from the affine matrix
-    voxel_sizes = np.abs(np.diag(affine)[:3])
+    voxel_sizes = pixdim
+    print(pixdim)
     
     patch_size_mm = {
         'd': 50,  # depth
@@ -216,6 +217,8 @@ def patch_extraction_foraminal(vol, mask, affine):
         'h': (patch_size_mm['h'] / voxel_sizes[1]).astype(int),
         'w': (patch_size_mm['w'] / voxel_sizes[2]).astype(int)
     }
+
+    print(patch_sizes_voxels)
 
     
     # Extract patches centered on centroid with posterior displacement
@@ -241,6 +244,7 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
             img_path = os.path.join(nii_folder, img_name)
             seg_sag_path = os.path.join(nii_folder, seg_sag_name)
             affine_ex = nib.load(img_path).affine
+            pixdim = nib.load(img_path).header['pixdim'][1:4]
             
             # Load the volumetric image and sagittal segmentation
             vol = nib.load(img_path).get_fdata()
@@ -268,7 +272,7 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                 if np.any(disc_mask):  # If the disc is found in the segmentation
                     # Extract the patch using the segmentation mask
                     
-                    patch_img_left, patch_img_right = patch_extraction_foraminal(vol, disc_mask, affine_ex)
+                    patch_img_left, patch_img_right = patch_extraction_foraminal(vol, disc_mask, affine_ex, pixdim)
                     
                     if patch_img_left is not None or patch_img_right is not None:  # Proceed only if patch extraction was successful
 
@@ -507,7 +511,7 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
     output_root_dir : root directory where output patches are stored
     """
     for subject_folder in os.listdir(root_dir):
-        try :
+        #try :
             subject_path = os.path.join(root_dir, subject_folder, "anat")
             output_subject_path = os.path.join(output_root_dir, subject_folder, "anat")
             
@@ -520,8 +524,8 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
                 # Apply the function to select the best patches if there are multiple ones for the same disc
                 #select_best_patches(output_subject_path)
 
-        except: 
-            print(subject_folder)    
+            """except: 
+            print(subject_folder)    """
         
 
 def main():

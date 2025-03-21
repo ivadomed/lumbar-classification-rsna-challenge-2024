@@ -6,7 +6,7 @@ import csv
 
 def get_batches(source_dir, batch_size=50):
     """Get a list of batches of subjects filtered by the filter_func."""
-    all_subjects = [sub for sub in os.listdir(source_dir)]
+    all_subjects = [sub for sub in os.listdir(source_dir) if 'sub' in sub] 
     return [all_subjects[i:i + batch_size] for i in range(0, len(all_subjects), batch_size)]
 
 
@@ -32,7 +32,7 @@ def run_totalspineseg(source_dir):
                 if os.path.exists(anat_path):
                     for file in os.listdir(anat_path):
                         file_path = os.path.join(anat_path, file)
-                        if os.path.isfile(file_path) and 'ax' not in file_path and 'total_seg' not in file_path:
+                        if os.path.isfile(file_path) and 'sag' in file_path and 'total_seg' not in file_path:
                             print(file_path)
                             shutil.copy(file_path, tss_temp_dir)
                             print('File copied successfully.')
