@@ -61,11 +61,11 @@ def prepare_data_nfn(list_subjects, data_dir, transform):
     
     for subject in list_subjects:
         
-        subject_dir = os.path.join(data_dir, f'sub-{subject}', 'anat')
+        subject_dir = os.path.join(data_dir, f'{subject}', 'anat')
         
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
-                
+
                 if '_patch.nii.gz' in file and 'foramen' in file and 'T1w' in file:
                     t1_path = os.path.join(subject_dir, file)
                     
@@ -83,30 +83,21 @@ def prepare_data_nfn(list_subjects, data_dir, transform):
                     
                     if os.path.exists(t1_path):
                         
-                        # Vérifier la forme de l'image
-                        t1_image = nib.load(t1_path)
-                        t2_image = nib.load(t2_path)
                         
-                        t1_image_data = t1_image.get_fdata()
-                        t2_image_data = t2_image.get_fdata()
+                            
+                        
+                        if 'left' in file:
+                            label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
+                        if 'right' in file:
+                            label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
+                            
 
-                        if t1_image_data.ndim == 3 and t2_image_data.ndim == 3 :
-                            
-                            subject_id = subject
-                            if 'left' in file:
-                                label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
-                            if 'right' in file:
-                                label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
-                                # Flip the image along the appropriate axis (e.g., flipping along x-axis)
-                                t1_image_data = np.flip(t1_image_data, axis=0)  # Flip along the first axis (x-axis)
-                                t2_image_data = np.flip(t2_image_data, axis=0)
-
-                            # Obtenir l'étiquette brute
-                            
-                            
-                            counter += 1
-                            label = f"{subject_id}_{label_column}"
-                            data.append({"T1": t1_path, "T2": t2_path,  "label": label, "combined": None})
+                        # Obtenir l'étiquette brute
+                        
+                        
+                        counter += 1
+                        label = f"{subject}_{label_column}"
+                        data.append({"T1": t1_path, "T2": t2_path,  "label": label, "combined": None})
 
 
     print(f"Nombre de données chargées: {counter}")
@@ -114,20 +105,10 @@ def prepare_data_nfn(list_subjects, data_dir, transform):
     return Dataset(data=data, transform=transform)
 
 
-model_nfn = ResNet(
-            block="bottleneck",
-            layers=[3, 4, 6, 3],
-            block_inplanes=[64, 128, 256, 512],
-            spatial_dims=3,
-            n_input_channels=2,
-            num_classes=3,
-            ).cuda()
-
-chkpth = "/kaggle/input/nfn_model/pytorch/default/8/model_with_loss_56_new_images.pth"
-model_nfn.load_state_dict(torch.load(chkpth, map_location=device))
 
 
-def eval_nfn(list_subjects, data_dir): 
+
+def eval_nfn(list_subjects, data_dir, model_nfn): 
     
         # Préparer les données
         transform=get_transforms_nfn()
@@ -155,3 +136,5 @@ def eval_nfn(list_subjects, data_dir):
                     pred.append((label, output))
         
         return pred 
+
+
