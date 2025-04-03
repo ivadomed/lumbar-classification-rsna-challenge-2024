@@ -5,7 +5,8 @@ from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, SpatialPadd, CenterSpatialCropd, NormalizeIntensityd,
     RandRotated, RandSpatialCropd, RandBiasFieldd, Lambdad, Transform,
-    RandGaussianNoised, RandAffined, RandZoomd, Rand3DElasticd
+    RandGaussianNoised, RandAffined, RandZoomd, Rand3DElasticd, Flipd,
+    SpatialCropd
 )
 from torch.utils.data import DataLoader
 from monai.data import Dataset
@@ -60,29 +61,34 @@ regular_transforms = Compose([
         EnsureChannelFirstd(keys=["image"]),
     ])
 
-# get transforms to call at each getitem
-def get_transforms_sas(mode='basic', side='left'):
+regular_transforms_flip = Compose([
+    LoadImaged(keys=['image']),
+    EnsureChannelFirstd(keys=["image"]),
+    Flipd(keys=['image'], spatial_axis=0)
+])
+
+# transformation pipeline for the data
+def get_transforms_sas(mode='basic'):
+    # Define the transform pipeline with rotation augmentation
+    
     if mode == 'basic':
         common_transforms = Compose([
-            SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),
-            CenterSpatialCropd(
-                keys=['image'],
-                roi_size=(120, 80, 6)
-            ),
+            SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, 100, 6)),  # crop pour récupérer la gauche
+            SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)),  # Padding pour atteindre une taille fixe
+            CenterSpatialCropd(keys=['image'], roi_size=(60, 80, 6))  # Crop pour obtenir une taille fixe
         ])
-
-    elif mode == 'random':
-        # Same transforms but with random augmentations
+    
+    elif mode == 'random':  
         common_transforms = Compose([
-            RandRotated(keys=['image'], prob=0.8, range_x=0.2),
-            RandGaussianNoised(keys=['image'], prob=0.4, mean=0.0, std=0.1),
-            RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)),
-            SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),
-            RandSpatialCropd(
-                keys=['image'],
-                roi_size=(120, 80, 6),
-                random_size=False
-            ),
+            RandRotated(keys=['image'], prob=1, range_x=0.2),
+            SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, 100, 6)),  # crop pour récupérer la gauche
+            SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)),  # Padding pour atteindre une taille fixe
+            RandAffined(keys=['image'], prob=1.0, shear_range=(0.3, 0.3, 0.3)),
+            Rand3DElasticd(keys=['image'], prob=0.5, sigma_range=(8, 12), magnitude_range=(100, 200)),
+            RandGaussianNoised(keys=['image'], prob=0.5, mean=0.0, std=0.1),
+            RandBiasFieldd(keys=['image'], prob=0.5, coeff_range=(0, 0.4)),
+            RandZoomd(keys=['image'], prob=0.5, min_zoom=0.95, max_zoom=1.15),
+            RandSpatialCropd(keys=['image'], roi_size=(60, 80, 6), random_size=False)  # Crop pour obtenir une taille fixe
         ])
 
     # Create list of transforms for processing 2D slices
@@ -116,8 +122,8 @@ def get_transforms_sas(mode='basic', side='left'):
 
     # Combine common_transforms with slice_transforms
     transforms = Compose([common_transforms, slice_transforms])
-
-    return transforms
+    
+    return transforms  # Maintenant on retourne la composition complète
 
 # get transforms to call at each getitem
 def get_transforms(mode='basic'):
@@ -196,6 +202,21 @@ class CustomDataset(Dataset):
         return data
 
 
+# custom dataset to apply transforms at each getitem
+class CustomDatasetSAS(Dataset):
+    def __init__(self, data, fixed_transform=regular_transforms, random_transform=True):
+        self.data = [fixed_transform(d) for d in data] if fixed_transform else data 
+        self.random_transform = random_transform
+
+    def __getitem__(self, index):
+        data = self.data[index]
+        if self.random_transform:
+            data = get_transforms_sas(mode='random')(data)
+        else :
+            data = get_transforms_sas(mode='basic')(data)
+        return data
+
+
 def prepare_data(data_dir, csv_file, random=True):
     data = []
     labels_df = pd.read_csv(csv_file)
@@ -241,6 +262,48 @@ def prepare_data(data_dir, csv_file, random=True):
     print(f"Number of loaded data: {counter}")
     return CustomDataset(data=data, fixed_transform=regular_transforms, random_transform=random)
 
+def prepare_data_sas(data_dir, csv_file, random=True):
+    data_left = []
+    data_right = []
+    labels_df = pd.read_csv(csv_file)
+
+    counter = 0
+    # Label conversion dictionary
+    text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
+
+    for subject in os.listdir(data_dir):
+        print(subject)
+        subject_dir = os.path.join(data_dir, subject, 'anat')
+        if os.path.isdir(subject_dir):
+            for file in os.listdir(subject_dir):
+                if '_patch.nii.gz' in file and 'foramen' not in file:
+                    image_path = os.path.join(subject_dir, file)
+                    parts = image_path.split('_')
+                    disk_level = f"{parts[-3]}_{parts[-2]}"
+
+                    if os.path.exists(image_path):
+                        # Check image shape
+                        image_data = nib.load(image_path).get_fdata()
+                        if image_data.ndim == 3:
+                            subject_id = (subject.replace('sub-', ''))
+
+                            label_column_sasl = f'left_subarticular_stenosis_{disk_level.lower()}'
+                            label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
+                            # Obtenir l'étiquette brute
+
+                            label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
+                            label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
+                            
+                            # Convertir l'étiquette textuelle en valeur numérique
+                            label_numeric_sasr = text2int.get(label_sasr, -1)
+                            label_numeric_sasl = text2int.get(label_sasl, -1)
+                            if label_numeric_sasr in [0, 1, 2] and label_numeric_sasl in [0, 1, 2]:
+                                data_right.append({"image": image_path, "label": label_numeric_sasr})
+                                data_left.append({"image": image_path, "label": label_numeric_sasl})
+                                counter += 2
+ 
+    print(f"Number of loaded data: {counter}")
+    return CustomDatasetSAS(data=data_left, fixed_transform=regular_transforms, random_transform=random), CustomDatasetSAS(data=data_right, fixed_transform=regular_transforms_flip, random_transform=random)
 
 # function to test the data preparation
 # load using torch.utils.data.DataLoader
