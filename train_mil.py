@@ -220,9 +220,9 @@ def train_model(
 
     # Create dataloaders
     train_loader = DataLoader(train_data, batch_size=batch_size,
-                              shuffle=True, num_workers=4)
+                              shuffle=True, num_workers=0)
     val_loader = DataLoader(val_data, batch_size=batch_size,
-                            shuffle=False, num_workers=4)
+                            shuffle=False, num_workers=0)
 
     # Initialize model
     model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
@@ -329,18 +329,18 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Set paths
-    data_dir = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20250212nii_data_splits'  # Update with your data path
-    csv_file = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/dcom_data/train.csv'  # Update with your CSV path
+    data_dir = '/home/ge.polymtl.ca/thdaga/duke/public/rsna_challenge/20250212nii_data_splits'  # Update with your data path
+    csv_file = '/home/ge.polymtl.ca/thdaga/duke/public/rsna_challenge/dcom_data/train.csv'  # Update with your CSV path
 
     # Train model
     model = train_model(
         data_dir=data_dir,
         csv_file=csv_file,
-        num_epochs=10,
-        batch_size=8,
+        num_epochs=20,
+        batch_size=2,
         learning_rate=5e-5,
         encoder_lr=5e-5,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=3,  # Freeze le ConvNext après 3 époques
+        freeze_encoder_epoch=0,  # Freeze le ConvNext après 3 époques
         aux_loss_weight=0,
         aux_loss_schedule='constant',
         num_layers=1,  # Un seul layer de GRU comme suggéré
