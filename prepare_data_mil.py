@@ -6,7 +6,7 @@ from monai.transforms import (
     ToTensord, SpatialPadd, CenterSpatialCropd, NormalizeIntensityd,
     RandRotated, RandSpatialCropd, RandBiasFieldd, Lambdad, Transform,
     RandGaussianNoised, RandAffined, RandZoomd, Rand3DElasticd, Flipd,
-    SpatialCropd
+    SpatialCropd, Spacingd
 )
 from torch.utils.data import DataLoader
 from monai.data import Dataset
@@ -55,22 +55,21 @@ class ExtractSlicesD(Transform):
                     print(f"Final slice {i} shape: {slice_final.shape}")
         return d
 
-# regular transforms just creating the dataset
-regular_transforms = Compose([
+
+
+# transformation pipeline for the data
+def get_transforms_sas(mode='basic', side = "right"):
+    # Define the transform pipeline with rotation augmentation
+    
+    regular_transforms = Compose([
         LoadImaged(keys=['image']),
         EnsureChannelFirstd(keys=["image"]),
     ])
 
-regular_transforms_flip = Compose([
-    LoadImaged(keys=['image']),
-    EnsureChannelFirstd(keys=["image"]),
-    Flipd(keys=['image'], spatial_axis=0)
-])
+    if side == "left": 
+        regular_transforms = Compose([regular_transforms,Flipd(keys=['image'], spatial_axis=0)])
 
-# transformation pipeline for the data
-def get_transforms_sas(mode='basic'):
-    # Define the transform pipeline with rotation augmentation
-    
+
     if mode == 'basic':
         common_transforms = Compose([
             SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, 100, 6)),  # crop pour récupérer la gauche
@@ -121,12 +120,19 @@ def get_transforms_sas(mode='basic'):
     ])
 
     # Combine common_transforms with slice_transforms
-    transforms = Compose([common_transforms, slice_transforms])
+    transforms = Compose([regular_transforms, common_transforms, slice_transforms])
     
     return transforms  # Maintenant on retourne la composition complète
 
 # get transforms to call at each getitem
 def get_transforms_scs(mode='basic'):
+    
+    regular_transforms = Compose([
+        LoadImaged(keys=['image']),
+        EnsureChannelFirstd(keys=["image"]),
+    ])
+    
+    
     if mode == 'basic':
         common_transforms = Compose([
             SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),
@@ -183,11 +189,79 @@ def get_transforms_scs(mode='basic'):
     ])
 
     # Combine common_transforms with slice_transforms
-    transforms = Compose([common_transforms, slice_transforms])
+    transforms = Compose([regular_transforms, common_transforms, slice_transforms])
 
     return transforms
 
+def get_transforms_nfn(mode='basic', side = "right"):
 
+    regular_transforms = Compose([
+        LoadImaged(keys=['image']),
+        EnsureChannelFirstd(keys=["image"]),
+    ])
+
+    if side == "left": 
+        regular_transforms = Compose([regular_transforms,Flipd(keys=['image'], spatial_axis=0)])
+
+
+    if mode == 'basic':
+        common_transforms = Compose([
+            Spacingd(keys=['image'], pixdim=(4.0, 0.4, 0.4), mode=('bilinear')),
+            SpatialPadd(keys=['image'], spatial_size=(6, 100, 100)),
+            CenterSpatialCropd(
+                keys=['image'],
+                roi_size=(6, 100, 100)
+            ),
+        ])
+
+    elif mode == 'random':
+        # Same transforms but with random augmentations
+        common_transforms = Compose([
+            Spacingd(keys=['image'], pixdim=(4.0, 0.4, 0.4), mode=('bilinear')),
+            RandRotated(keys=['image'], prob=0.8, range_x=0.2),
+            RandGaussianNoised(keys=['image'], prob=0.4, mean=0.0, std=0.1),
+            RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)),
+            SpatialPadd(keys=['image'], spatial_size=(6, 100, 100)),
+            RandSpatialCropd(
+                keys=['image'],
+                roi_size=(6, 100, 100),
+                random_size=False
+            ),
+        ])
+
+    # Create list of transforms for processing 2D slices
+    slice_transforms = Compose([
+        # Custom transform to extract and resize slices
+        ExtractSlicesD(keys=['image'], target_size=(100, 100)),
+        # Scale and normalize
+        ScaleIntensityd(
+            keys=[f'slice_{i}' for i in range(6)]
+        ),
+        NormalizeIntensityd(
+            keys=[f'slice_{i}' for i in range(6)],
+            nonzero=True
+        ),
+        # Ensure all slices are tensors
+        ToTensord(
+            keys=[f'slice_{i}' for i in range(6)]
+        ),
+        # Concatenate all slices into a bag
+        ConcatItemsd(
+            keys=[f'slice_{i}' for i in range(6)],
+            name='bag',
+            dim=0
+        ),
+        # Add a transform to ensure bag has the correct shape
+        Lambdad(
+            keys=['bag'],
+            func=lambda x: x.reshape(6, 1, 100, 100)
+        )
+    ])
+
+    # Combine common_transforms with slice_transforms
+    transforms = Compose([common_transforms, slice_transforms])
+
+    return transforms
 
 def prepare_data_scs(data_dir, csv_file, random=True):
     data = []
@@ -208,31 +282,29 @@ def prepare_data_scs(data_dir, csv_file, random=True):
                     disk_level = f"{parts[-3]}_{parts[-2]}"
 
                     if os.path.exists(image_path):
-                        # Check image shape
-                        image_data = nib.load(image_path).get_fdata()
-                        if image_data.ndim == 3:
-                            subject_id = (subject.replace('sub-', ''))
+                        
+                        subject_id = (subject.replace('sub-', ''))
 
-                            label_column = (
-                                f'spinal_canal_stenosis_{disk_level.lower()}'
-                            )
-                            # Get raw label
-                            label = labels_df.loc[
-                                labels_df['study_id'] == subject_id,
-                                label_column
-                            ].values[0]
+                        label_column = (
+                            f'spinal_canal_stenosis_{disk_level.lower()}'
+                        )
+                        # Get raw label
+                        label = labels_df.loc[
+                            labels_df['study_id'] == subject_id,
+                            label_column
+                        ].values[0]
 
-                            # Convert text label to numeric value
-                            label_numeric = text2int.get(label, -1)
-                            if label_numeric != -1:
-                                counter += 1
-                                data.append({
-                                    "image": image_path,
-                                    "label": label_numeric
-                                })
+                        # Convert text label to numeric value
+                        label_numeric = text2int.get(label, -1)
+                        if label_numeric != -1:
+                            counter += 1
+                            data.append({
+                                "image": image_path,
+                                "label": label_numeric
+                            })
 
     print(f"Number of loaded data: {counter}")
-    return CustomDataset(data=data, fixed_transform=regular_transforms, random_transform=random)
+    return Dataset(data=data, transform=get_transforms_scs(mode='random') if random else get_transforms_scs(mode='basic'))
 
 def prepare_data_sas(data_dir, csv_file, random=True):
     data_left = []
@@ -254,28 +326,77 @@ def prepare_data_sas(data_dir, csv_file, random=True):
                     disk_level = f"{parts[-3]}_{parts[-2]}"
 
                     if os.path.exists(image_path):
-                        # Check image shape
-                        image_data = nib.load(image_path).get_fdata()
-                        if image_data.ndim == 3:
-                            subject_id = (subject.replace('sub-', ''))
+                        
+                        subject_id = (subject.replace('sub-', ''))
 
-                            label_column_sasl = f'left_subarticular_stenosis_{disk_level.lower()}'
-                            label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
-                            # Obtenir l'étiquette brute
+                        label_column_sasl = f'left_subarticular_stenosis_{disk_level.lower()}'
+                        label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
+                        # Obtenir l'étiquette brute
 
-                            label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
-                            label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
-                            
-                            # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric_sasr = text2int.get(label_sasr, -1)
-                            label_numeric_sasl = text2int.get(label_sasl, -1)
-                            if label_numeric_sasr in [0, 1, 2] and label_numeric_sasl in [0, 1, 2]:
-                                data_right.append({"image": image_path, "label": label_numeric_sasr})
-                                data_left.append({"image": image_path, "label": label_numeric_sasl})
-                                counter += 2
+                        label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
+                        label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
+                        
+                        # Convertir l'étiquette textuelle en valeur numérique
+                        label_numeric_sasr = text2int.get(label_sasr, -1)
+                        label_numeric_sasl = text2int.get(label_sasl, -1)
+                        if label_numeric_sasr in [0, 1, 2] and label_numeric_sasl in [0, 1, 2]:
+                            data_right.append({"image": image_path, "label": label_numeric_sasr})
+                            data_left.append({"image": image_path, "label": label_numeric_sasl})
+                            counter += 2
  
     print(f"Number of loaded data: {counter}")
-    return CustomDatasetSAS(data=data_left, fixed_transform=regular_transforms, random_transform=random), CustomDatasetSAS(data=data_right, fixed_transform=regular_transforms_flip, random_transform=random)
+    return Dataset(data=data_left, transform= get_transforms_sas(mode='random', side='left') if random else get_transforms_scs(mode='basic', side='left')), Dataset(data=data_right, transform= get_transforms_sas(mode='random', side='right') if random else get_transforms_scs(mode='basic', side='right') )
+
+def prepare_data(data_dir, csv_file, random=True):
+    data = []
+    labels_df = pd.read_csv(csv_file)
+
+    counter = 0
+    # Label conversion dictionary
+    text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
+
+    for subject in os.listdir(data_dir):
+        print(subject)
+        """if counter >40: 
+            break """
+        subject_dir = os.path.join(data_dir, subject, 'anat')
+        if os.path.isdir(subject_dir):
+            for file in os.listdir(subject_dir):
+                if '_patch.nii.gz' in file and 'foramen' in file and 'T1' in file:
+                    image_path = os.path.join(subject_dir, file)
+                    parts = image_path.split('_')
+                    disk_level = f"{parts[-5]}_{parts[-4]}"
+
+                    if os.path.exists(image_path):
+                        
+                        subject_id = (subject.replace('sub-', ''))
+                        if 'left' in file:
+                            orientation = 'left'
+                        elif 'right' in file: 
+                            orientation = 'right'
+                        label_column = (
+                            f'{orientation}_neural_foraminal_narrowing_{disk_level.lower()}'
+                        )
+                        # Get raw label
+                        label = labels_df.loc[
+                            labels_df['study_id'] == subject_id,
+                            label_column
+                        ].values[0]
+
+                        # Convert text label to numeric value
+                        label_numeric = text2int.get(label, -1)
+                        if label_numeric != -1:
+                            counter += 1
+                            data.append({
+                                "image": image_path,
+                                "label": label_numeric
+                            })
+
+    print(f"Number of loaded data: {counter}")
+    # add a distinction between left and right ? 
+    return Dataset(data=data, transform=get_transforms_nfn(mode='random') if random else get_transforms_nfn(mode='basic'))
+
+
 
 # function to test the data preparation
 # load using torch.utils.data.DataLoader
