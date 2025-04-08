@@ -122,9 +122,9 @@ def prepare_data(data_dir, csv_file):
             for file in os.listdir(subject_dir):
                 
                 if '_patch.nii.gz' in file and 'foramen' in file and 'T1w' in file:
-                    t2_path = os.path.join(subject_dir, file)
+                    t1_path = os.path.join(subject_dir, file)
                     
-                    parts = t2_path.split('_')
+                    parts = t1_path.split('_')
 
                     disk_level = f"{parts[-5]}_{parts[-4]}"
               
@@ -132,28 +132,28 @@ def prepare_data(data_dir, csv_file):
                                 
                                 
 
-                    if os.path.exists(t2_path):
+                    if os.path.exists(t1_path):
                         
                         subject_id = (subject.replace('sub-', ''))
                         if 'left' in file:
-                            label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
-                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
-                            # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric = text2int.get(label, -1)
-                            if label_numeric != -1:
-                                
-                                data_left.append({"T1": t2_path, "label": label_numeric})
-                                counter +=1 
-
-
-                        if 'right' in file:
                             label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
                             label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
                             # Convertir l'étiquette textuelle en valeur numérique
                             label_numeric = text2int.get(label, -1)
                             if label_numeric != -1:
                                 
-                                data_right.append({"T1": t2_path, "label": label_numeric})
+                                data_left.append({"T1": t1_path, "label": label_numeric})
+                                counter +=1 
+
+
+                        if 'right' in file:
+                            label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
+                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                            # Convertir l'étiquette textuelle en valeur numérique
+                            label_numeric = text2int.get(label, -1)
+                            if label_numeric != -1:
+                                
+                                data_right.append({"T1": t1_path, "label": label_numeric})
                                 counter +=1
                         
     print(counter)                                  
@@ -230,7 +230,7 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
         'train_set_size': len(train_dataset),
         'val_set_size': len(val_dataset)
     }
-    model_name = f"nfn_t1_t2_model_layers_{layers}_epochs_{epochs}_lr_{lr}_wd_{wd}"
+    model_name = f"nfn_t1_model_layers_{layers}_epochs_{epochs}_lr_{lr}_wd_{wd}"
 
     
     model = model.to(device)
@@ -376,8 +376,8 @@ def main():
     wandb.save(config)
 
     # Extract the data directory and CSV file path
-    train_dir = "../../duke/public/rsna_challenge/20250212nii_data_splits/training"
-    val_dir = "../../duke/public/rsna_challenge/20250212nii_data_splits/validation"
+    train_dir = "../../duke/public/rsna_challenge/20250408nii_data/training"
+    val_dir = "../../duke/public/rsna_challenge/20250408nii_data/validation"
     csv_file = "../../duke/public/rsna_challenge/dcom_data/train.csv"
     
 
