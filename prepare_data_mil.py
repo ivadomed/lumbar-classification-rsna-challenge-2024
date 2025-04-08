@@ -259,7 +259,7 @@ def get_transforms_nfn(mode='basic', side = "right"):
     ])
 
     # Combine common_transforms with slice_transforms
-    transforms = Compose([common_transforms, slice_transforms])
+    transforms = Compose([regular_transforms, common_transforms, slice_transforms])
 
     return transforms
 
