@@ -126,7 +126,7 @@ def get_transforms_sas(mode='basic'):
     return transforms  # Maintenant on retourne la composition complète
 
 # get transforms to call at each getitem
-def get_transforms(mode='basic'):
+def get_transforms_scs(mode='basic'):
     if mode == 'basic':
         common_transforms = Compose([
             SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),
@@ -187,37 +187,9 @@ def get_transforms(mode='basic'):
 
     return transforms
 
-# custom dataset to apply transforms at each getitem
-class CustomDataset(Dataset):
-    def __init__(self, data, fixed_transform=regular_transforms, random_transform=True):
-        self.data = [fixed_transform(d) for d in data] if fixed_transform else data 
-        self.random_transform = random_transform
-
-    def __getitem__(self, index):
-        data = self.data[index]
-        if self.random_transform:
-            data = get_transforms(mode='random')(data)
-        else :
-            data = get_transforms(mode='basic')(data)
-        return data
 
 
-# custom dataset to apply transforms at each getitem
-class CustomDatasetSAS(Dataset):
-    def __init__(self, data, fixed_transform=regular_transforms, random_transform=True):
-        self.data = [fixed_transform(d) for d in data] if fixed_transform else data 
-        self.random_transform = random_transform
-
-    def __getitem__(self, index):
-        data = self.data[index]
-        if self.random_transform:
-            data = get_transforms_sas(mode='random')(data)
-        else :
-            data = get_transforms_sas(mode='basic')(data)
-        return data
-
-
-def prepare_data(data_dir, csv_file, random=True):
+def prepare_data_scs(data_dir, csv_file, random=True):
     data = []
     labels_df = pd.read_csv(csv_file)
 
