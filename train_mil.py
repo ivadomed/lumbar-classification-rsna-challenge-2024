@@ -599,16 +599,16 @@ def train_model_nfn(
     val_dir = os.path.join(data_dir, 'validation')
 
     # Create datasets
-    train_data_left, train_data_right = prepare_data_nfn(train_dir, csv_file, random=True)
-    val_data_left, val_data_right = prepare_data_nfn(val_dir, csv_file, random=False)
-    train_data = ConcatDataset([train_data_left, train_data_right])
-    val_data = ConcatDataset([val_data_left, val_data_right])
+    train_data = prepare_data_nfn(train_dir, csv_file, random=True)
+    val_data= prepare_data_nfn(val_dir, csv_file, random=False)
+    # train_data = ConcatDataset([train_data_left, train_data_right])
+    # val_data = ConcatDataset([val_data_left, val_data_right])
 
     # Create dataloaders
     train_loader = DataLoader(train_data, batch_size=batch_size,
-                              shuffle=True, num_workers=4)
+                              shuffle=True, num_workers=0)
     val_loader = DataLoader(val_data, batch_size=batch_size,
-                            shuffle=False, num_workers=4)
+                            shuffle=False, num_workers=0)
 
     # Initialize model
     model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
@@ -737,18 +737,18 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Set paths
-    data_dir = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20250212nii_data_splits'
-    csv_file = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/dcom_data/train.csv'
+    data_dir = '../../duke/public/rsna_challenge/20250408nii_data'
+    csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
 
     # Train model
-    model = train_model_sas(
+    model = train_model_nfn(
         data_dir=data_dir,
         csv_file=csv_file,
-        num_epochs=12,
+        num_epochs=20,
         batch_size=2,
         learning_rate=5e-5,
         encoder_lr=5e-5,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=12,  # Freeze le ConvNext après 3 époques
+        freeze_encoder_epoch=3,  # Freeze le ConvNext après 3 époques
         encoder_cosine_epochs=10,  # Le ConvNext atteint son minimum en 2 époques
         other_cosine_epochs=6,  # Le reste du modèle atteint son minimum en 4 époques
         eta_min_factor_encoder=0.1,  # Le lr de l'encoder descend à 4% de sa valeur initiale

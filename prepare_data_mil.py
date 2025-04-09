@@ -55,7 +55,35 @@ class ExtractSlicesD(Transform):
                     print(f"Final slice {i} shape: {slice_final.shape}")
         return d
 
+class ExtractSlicesD_nfn(Transform):
+    def __init__(self, keys=['image'], target_size=(384, 384), verbose=False):
+        self.keys = keys
+        self.target_size = target_size
+        self.resize = tio.Resize(target_shape=(*target_size, 1))
+        self.verbose = verbose
 
+    def __call__(self, data):
+        d = dict(data)
+        
+        for key in self.keys:
+            # Get image and remove channel dimension (1, X, Y, 6) -> (X, Y, 6)
+            image = d[key].squeeze(0)
+            for i in range(image.shape[0]):
+                # Extract slice, add channel dim for torchio,
+                # resize, then normalize
+                slice_2d = image[i, :, :]
+                slice_3d = slice_2d.unsqueeze(0).unsqueeze(-1)
+                if self.verbose:
+                    print(f"Shape before resize: {slice_3d.shape}")
+                slice_resized = self.resize(slice_3d)
+                if self.verbose:
+                    print(f"Shape after resize: {slice_resized.shape}")
+                # Remove the z dimension that we added
+                slice_final = slice_resized.squeeze(-1)
+                d[f'slice_{i}'] = slice_final
+                if self.verbose:
+                    print(f"Final slice {i} shape: {slice_final.shape}")
+        return d
 
 # transformation pipeline for the data
 def get_transforms_sas(mode='basic', side = "right"):
@@ -232,7 +260,7 @@ def get_transforms_nfn(mode='basic', side = "right"):
     # Create list of transforms for processing 2D slices
     slice_transforms = Compose([
         # Custom transform to extract and resize slices
-        ExtractSlicesD(keys=['image'], target_size=(100, 100)),
+        ExtractSlicesD_nfn(keys=['image'], target_size=(384, 384)),
         # Scale and normalize
         ScaleIntensityd(
             keys=[f'slice_{i}' for i in range(6)]
@@ -254,7 +282,7 @@ def get_transforms_nfn(mode='basic', side = "right"):
         # Add a transform to ensure bag has the correct shape
         Lambdad(
             keys=['bag'],
-            func=lambda x: x.reshape(6, 1, 100, 100)
+            func=lambda x: x.reshape(6, 1, 384, 384)
         )
     ])
 
@@ -347,7 +375,7 @@ def prepare_data_sas(data_dir, csv_file, random=True):
     print(f"Number of loaded data: {counter}")
     return Dataset(data=data_left, transform= get_transforms_sas(mode='random', side='left') if random else get_transforms_scs(mode='basic', side='left')), Dataset(data=data_right, transform= get_transforms_sas(mode='random', side='right') if random else get_transforms_scs(mode='basic', side='right') )
 
-def prepare_data(data_dir, csv_file, random=True):
+def prepare_data_nfn(data_dir, csv_file, random=True):
     data = []
     labels_df = pd.read_csv(csv_file)
 
@@ -371,9 +399,9 @@ def prepare_data(data_dir, csv_file, random=True):
                         
                         subject_id = (subject.replace('sub-', ''))
                         if 'left' in file:
-                            orientation = 'left'
-                        elif 'right' in file: 
                             orientation = 'right'
+                        elif 'right' in file: 
+                            orientation = 'left'
                         label_column = (
                             f'{orientation}_neural_foraminal_narrowing_{disk_level.lower()}'
                         )
