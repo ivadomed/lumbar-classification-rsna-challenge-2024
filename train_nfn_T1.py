@@ -389,7 +389,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=2, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
 
     wandb.finish()  
 
