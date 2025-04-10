@@ -384,7 +384,7 @@ def prepare_data_nfn(data_dir, csv_file, random=True):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
 
     for subject in os.listdir(data_dir):
-        print(subject)
+        #print(subject)
         """if counter >40: 
             break """
         subject_dir = os.path.join(data_dir, subject, 'anat')

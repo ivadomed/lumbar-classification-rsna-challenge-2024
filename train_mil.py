@@ -755,6 +755,6 @@ if __name__ == "__main__":
         eta_min_factor_other=0.1,  # Le lr du reste descend à 4% de sa valeur initiale
         aux_loss_weight=0,
         aux_loss_schedule='constant',
-        num_layers=3,
+        num_layers=2,
         device=device
     )
