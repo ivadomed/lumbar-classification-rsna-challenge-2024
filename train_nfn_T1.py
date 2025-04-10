@@ -44,7 +44,7 @@ def get_transforms(mode='basic', side='left'):
     ]
 
     right_flip = [
-        #Flipd(keys=['T1'], spatial_axis=0)
+        Flipd(keys=['T1'], spatial_axis=0)
         ]
 
     second_transforms_basic = [
