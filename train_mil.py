@@ -614,7 +614,8 @@ def train_model_nfn(
     model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
 
     # Loss function - CrossEntropyLoss with class weights if needed
-    criterion = nn.CrossEntropyLoss(weight=weight_challenge)
+    criterion_encoder = nn.CrossEntropyLoss()
+    criterion_no_encoder = nn.CrossEntropyLoss(weight=weight_challenge)
 
     # Séparer les paramètres du ConvNext et du reste du modèle
     encoder_params = model.encoder.parameters()
@@ -665,9 +666,10 @@ def train_model_nfn(
     best_val_loss = float('inf')
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
-
+        criterion = criterion_encoder
         # Freeze le ConvNext après freeze_encoder_epoch époques
         if epoch >= freeze_encoder_epoch:
+            criterion = criterion_no_encoder
             for param in model.encoder.parameters():
                 param.requires_grad = False
             print("ConvNext encoder frozen")
@@ -745,10 +747,10 @@ if __name__ == "__main__":
         data_dir=data_dir,
         csv_file=csv_file,
         num_epochs=20,
-        batch_size=2,
-        learning_rate=5e-5,
+        batch_size=16,
+        learning_rate=5e-4,
         encoder_lr=5e-5,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=3,  # Freeze le ConvNext après 3 époques
+        freeze_encoder_epoch=5,  # Freeze le ConvNext après 3 époques
         encoder_cosine_epochs=10,  # Le ConvNext atteint son minimum en 2 époques
         other_cosine_epochs=6,  # Le reste du modèle atteint son minimum en 4 époques
         eta_min_factor_encoder=0.1,  # Le lr de l'encoder descend à 4% de sa valeur initiale
