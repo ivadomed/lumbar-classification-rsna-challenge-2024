@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import random
 import json
 import math
-import timm 
+import timm
 
 
 # use the challenge's loss function : weighted cross entropy
@@ -80,6 +80,7 @@ def train_epoch(
         # Backward pass
         loss.backward()
         optimizer.step()
+
 
         # Update learning rates
         encoder_scheduler.step()
@@ -554,7 +555,7 @@ def train_model_sas(
 
 
 def train_model_nfn(
-    convnext_small, 
+    convnext_small,
     data_dir,
     csv_file,
     num_epochs=20,
@@ -569,8 +570,7 @@ def train_model_nfn(
     aux_loss_weight=0,
     aux_loss_schedule='constant',
     num_layers=1,
-    device='cuda',
-    
+    device='cuda'
 ):
     # Initialize wandb
     wandb.init(
@@ -744,7 +744,6 @@ if __name__ == "__main__":
     data_dir = '../../duke/public/rsna_challenge/20250408nii_data'
     csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
 
-
     convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',
                                    in_chans=1, pretrained=True, num_classes=0)
 
@@ -754,17 +753,17 @@ if __name__ == "__main__":
         convnext_small,
         data_dir=data_dir,
         csv_file=csv_file,
-        num_epochs=30,
+        num_epochs=20,
         batch_size=2,
-        learning_rate=5e-3,
-        encoder_lr=5e-4,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=5,  # Freeze le ConvNext après 3 époques
+        learning_rate=0.000005,
+        encoder_lr=0.00000005,  # Learning rate plus faible pour le ConvNext
+        freeze_encoder_epoch=2,  # Freeze le ConvNext après 3 époques
         encoder_cosine_epochs=10,  # Le ConvNext atteint son minimum en 2 époques
         other_cosine_epochs=6,  # Le reste du modèle atteint son minimum en 4 époques
         eta_min_factor_encoder=0.1,  # Le lr de l'encoder descend à 4% de sa valeur initiale
         eta_min_factor_other=0.1,  # Le lr du reste descend à 4% de sa valeur initiale
         aux_loss_weight=0,
         aux_loss_schedule='constant',
-        num_layers=1,
-        device=device,  
+        num_layers=2,
+        device=device
     )

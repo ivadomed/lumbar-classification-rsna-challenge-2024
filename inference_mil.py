@@ -2,7 +2,7 @@ import os
 import torch
 import json
 from torch.utils.data import DataLoader
-from prepare_data_mil import prepare_data
+from prepare_data_mil import prepare_data_nfn
 from mil_definition import MILmodel, convnext_small
 import numpy as np
 from sklearn.metrics import confusion_matrix
@@ -90,9 +90,9 @@ def main():
     print(f"Using device: {device}")
     
     # Paths
-    model_dir = '/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/mil_model_713349'
-    data_dir = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20250212nii_data_splits'
-    csv_file = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/dcom_data/train.csv'
+    model_dir = 'mil_model_nfn711201'
+    data_dir = '../../duke/public/rsna_challenge/20250408nii_data'
+    csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
     
     # Load configuration
     with open(os.path.join(model_dir, 'config.json'), 'r') as f:
@@ -100,7 +100,7 @@ def main():
     
     # Create validation dataset and dataloader
     val_dir = os.path.join(data_dir, 'validation')
-    val_data = prepare_data(val_dir, csv_file, random=False)
+    val_data = prepare_data_nfn(val_dir, csv_file, random=False)
     val_loader = DataLoader(val_data, 
                           batch_size=config['batch_size'],
                           shuffle=False,
