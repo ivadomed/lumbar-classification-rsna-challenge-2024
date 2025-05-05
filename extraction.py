@@ -11,6 +11,53 @@ import numpy as np
 import torch
 from pathlib import Path
 import torchio as tio
+from scipy.ndimage import center_of_mass
+from skimage.measure import regionprops
+
+
+# function to calculate the com of a disk and shift it along the disk axis (for the foramina)
+# this fdunction is not really time consuming (I was worried for regionprops but it's a matter of ms)
+def get_shifted_point_along_disk(disk_mask):
+    """
+    Calcule un point décalé selon l'axe du disque en LPI.
+    
+    Args:
+        disk_mask: Masque binaire 3D du disque
+    
+    Returns:
+        point: numpy array des coordonnées (x,y,z) du point décalé
+        disk_radius: rayon calculé du disque selon son axe
+        direction_vector: vecteur normalisé indiquant la direction du disque
+    """
+    # Trouver le centre du disque
+    centroid = center_of_mass(disk_mask)
+    # Trouver la slice sagittale contenant le centre du disque
+    sagittal_slice_idx = int(centroid[0])
+    sagittal_slice = disk_mask[sagittal_slice_idx, :, :]
+    
+    # Calculer l'orientation sur la slice 2D
+    props = regionprops(sagittal_slice.astype(int))[0]
+    orientation = props.orientation  # en radians
+
+    direction_vector = np.array([
+        0,  # x reste inchangé
+        -np.cos(orientation),   # y
+        -np.sin(orientation)    # z
+    ])
+    
+    # Normaliser le vecteur
+    direction_vector = direction_vector / np.linalg.norm(direction_vector)
+    
+    # Calculer le rayon du disque (projection sur le vecteur)
+    mask_points = np.array(np.where(disk_mask)).T
+    centered_points = mask_points - centroid
+    projections = np.abs(centered_points @ direction_vector)
+    disk_radius = np.max(projections)
+    
+    # Calculer le point décalé
+    shifted_point = centroid + direction_vector * disk_radius
+
+    return shifted_point
 
 def process_directory_other(main_dir):
     '''
@@ -131,25 +178,59 @@ def transform_seg2image(
 
     return output_seg
 
-# patch extraction for the NFN
-def patch_extraction_foraminal(vol, mask, d=10, h=20, w=20):
+
+# function for sagittal patches
+def patch_extraction_foraminal(vol, mask, affine):
     """
-    Extract a ROI from a volume with a given segmentation mask.
-    vol : array of shape (D, H, W)
-    mask : segmentation mask of shape (D, H, W)
-    d, h, w : margin for each image axis
+    Extract two 3D patches from an MRI volume centered around mask's centroid
+    
+    Parameters:
+    - vol: 3D numpy array representing the volume
+    - mask: 3D segmentation mask 
+    - affine: Affine matrix from the NIfTI file
+    
+    Returns:
+    - patch1, patch2: Two 3D numpy array patches
     """
+    i = 0
+
     D, H, W = vol.shape
-    mask = torch.Tensor(mask)
-    nonzero_indices = torch.nonzero(mask)  # Extracting non-zero indices from the first channel
-    d_min, h_min, w_min = nonzero_indices.min(0)[0]  # Minimum indices
-    d_max, h_max, w_max = nonzero_indices.max(0)[0]  # Maximum indices
-    patch1 = vol[max(0, d_min+d//2):min(D, d_min + d),
-                max(0, h_min - h):min(H, h_max + h),
-                max(0, w_min - w):min(W, w_max + w)]
-    patch2 = vol[max(0, d_max-d):min(D, d_max-d//2),
-                max(0, h_min - h):min(H, h_max + h),
-                max(0, w_min - w):min(W, w_max + w)]
+    # mask = torch.Tensor(mask)
+    # nonzero_indices = torch.nonzero(mask)
+    
+    # Calculate centroid of the mask and shift it along the disk axis
+    centroid = get_shifted_point_along_disk(mask).astype(int)
+
+    # Get voxel sizes from the affine matrix
+    voxel_sizes = np.abs(np.diag(affine)[:3])
+    
+    patch_size_mm = {
+        'd': 50,  # depth
+        'h': 50,  # height
+        'w': 50   # width
+    }
+
+    # Patch sizes (in voxels)
+    patch_sizes_voxels = {
+        'd': (patch_size_mm['d'] / voxel_sizes[0]).astype(int),
+        'h': (patch_size_mm['h'] / voxel_sizes[1]).astype(int),
+        'w': (patch_size_mm['w'] / voxel_sizes[2]).astype(int)
+    }
+
+    
+    # Extract patches centered on centroid with posterior displacement
+    patch1 = vol[
+        max(0, centroid[0] + 1):min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
+        max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
+        max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
+    ]
+    
+    patch2 = vol[
+        max(0, centroid[0] -1 -patch_sizes_voxels['d']//2):min(D, centroid[0]-1),
+        max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
+        max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
+    ]
+    
     return patch1, patch2
 
 # uses lists of sagittal images and segmentations to extract patches for each disc
@@ -159,6 +240,7 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
         if "patch" not in img_name:
             img_path = os.path.join(nii_folder, img_name)
             seg_sag_path = os.path.join(nii_folder, seg_sag_name)
+            affine_ex = nib.load(img_path).affine
             
             # Load the volumetric image and sagittal segmentation
             vol = nib.load(img_path).get_fdata()
@@ -186,7 +268,7 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                 if np.any(disc_mask):  # If the disc is found in the segmentation
                     # Extract the patch using the segmentation mask
                     
-                    patch_img_left, patch_img_right = patch_extraction_foraminal(vol, disc_mask, d=16, h=40, w=20)
+                    patch_img_left, patch_img_right = patch_extraction_foraminal(vol, disc_mask, affine_ex)
                     
                     if patch_img_left is not None or patch_img_right is not None:  # Proceed only if patch extraction was successful
 
@@ -199,12 +281,20 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
 
                         # Use the affine from the original volume to create the patch NIfTI image
                         original_affine = nib.load(img_path).affine
+                        original_header = nib.load(img_path).header.copy()
                         patch_nifti_img_left = nib.Nifti1Image(patch_img_left, affine=original_affine)
                         patch_nifti_img_right = nib.Nifti1Image(patch_img_right, affine=original_affine)
 
+
+                        q_code = int(original_header['qform_code'])
+                        s_code = int(original_header['sform_code'])
+
+                        patch_nifti_img_left.header.set_qform(original_affine, code=q_code)
+                        patch_nifti_img_left.header.set_sform(original_affine, code=s_code)
+                        patch_nifti_img_right.header.set_qform(original_affine, code=q_code)
+                        patch_nifti_img_right.header.set_sform(original_affine, code=s_code)
+
                         # Save the patch to the specified location
-                        print(patch_img_filepath_left)
-                        print(patch_img_filepath_right)
                         nib.save(patch_nifti_img_left, patch_img_filepath_left)
                         nib.save(patch_nifti_img_right, patch_img_filepath_right)
 
@@ -219,6 +309,7 @@ def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder
             # Load the volumetric image and sagittal segmentation
             vol = nib.load(img_path).get_fdata()
             seg_sag = nib.load(seg_sag_path).get_fdata()
+            affine = nib.load(img_path).affine
 
             # Détection des disques dans la segmentation sagittale
             #The values to check are based on the classes in totalspineseg 
@@ -242,7 +333,7 @@ def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder
                 if np.any(disc_mask):  # If the disc is found in the segmentation
                     # Extract the patch using the segmentation mask
                     
-                    patch_img = patch_extraction(vol, disc_mask)
+                    patch_img = patch_extraction_volume(vol, disc_mask, affine)
                     
                     if patch_img is not None:  # Proceed only if patch extraction was successful
 
@@ -253,6 +344,14 @@ def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder
                         # Use the affine from the original volume to create the patch NIfTI image
                         original_affine = nib.load(img_path).affine
                         patch_nifti_img = nib.Nifti1Image(patch_img, affine=original_affine)
+
+                        original_header = nib.load(img_path).header.copy()
+
+                        q_code = int(original_header['qform_code'])
+                        s_code = int(original_header['sform_code'])
+
+                        patch_nifti_img.header.set_qform(original_affine, code=q_code)
+                        patch_nifti_img.header.set_sform(original_affine, code=s_code)
 
                         # Save the patch to the specified location
                         nib.save(patch_nifti_img, patch_img_filepath)
@@ -307,30 +406,64 @@ def extract_patches_from_discs(nii_folder, output_folder):
     extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder)
 
 
-def patch_extraction(vol, mask, d=0, h=10, w=3):
+# function to extract patches from the discs in the nii folder for axial patches
+def patch_extraction_volume(vol, mask, affine):
     """
-    Extracts a region of interest (ROI) from a volume based on a segmentation mask.
-
-    vol : array of shape (D, H, W)
-    mask : segmentation mask of shape (D, H, W)
-    d, h, w : margin for each axis of the image
+    Extract a 3D patch from an MRI volume with specific real-world dimensions.
+    
+    Parameters:
+    - vol: 3D numpy array representing the volume
+    - mask: 3D segmentation mask 
+    - affine: Affine matrix from the NIfTI file
+    - header: Header from the NIfTI file
+    
+    Returns:
+    - patch: 3D numpy array with specified real-world dimensions
     """
-    D, H, W = vol.shape
+    # Convert mask to tensor for non-zero index extraction
     mask = torch.Tensor(mask)
-    nonzero_indices = torch.nonzero(mask)  # Extract non-zero indices
+    nonzero_indices = torch.nonzero(mask)
+    
+    # Calculate the centroid of the mask
+    centroid = nonzero_indices.float().mean(0).numpy().astype(int)
+    
+    # Get voxel sizes from the affine matrix
+    voxel_sizes = np.abs(np.diag(affine)[:3])
+    
+    # Calculate the number of voxels corresponding to 2.5 cm posterior displacement
+    posterior_displacement_cm = 20
+    posterior_displacement_voxels = (posterior_displacement_cm / voxel_sizes[1]).astype(int)
+    
+    # Compute the new centroid with posterior displacement
+    # Assuming the third dimension (index 2) is the posterior-anterior axis
+    displaced_centroid = centroid.copy()
+    displaced_centroid[1] -= posterior_displacement_voxels
+    
+    # Define desired patch sizes in cm
+    patch_sizes_cm = {
+        'RL': 60,  # Right-Left 
+        'AP': 40,  # Anterior-Posterior
+        'SI': 30   # Superior-Inferior
+    }
+    
+    # Calculate patch size in voxels
+    patch_sizes_voxels = np.floor(np.array([
+        patch_sizes_cm['RL'] / voxel_sizes[0],
+        patch_sizes_cm['AP'] / voxel_sizes[1], 
+        patch_sizes_cm['SI'] / voxel_sizes[2]
+    ])).astype(int)
 
-    try:
-        d_min, h_min, w_min = nonzero_indices.min(0)[0]  # Minimum indices
-        d_max, h_max, w_max = nonzero_indices.max(0)[0]  # Maximum indices
-        
-        patch = vol[max(0, d_min - d):min(D, d_max + d),
-                    max(0, h_min - h -50):min(H, h_max + h - 30),
-                    max(0, w_min - w):min(W, w_max + w)]
-       
-        return patch
+    # Extract patch
+    D, H, W = vol.shape
+    half_sizes = patch_sizes_voxels // 2
+    
+    patch = vol[
+        max(0, displaced_centroid[0] - half_sizes[0]):min(D, displaced_centroid[0] + half_sizes[0] + patch_sizes_voxels[0] % 2),
+        max(0, displaced_centroid[1] - half_sizes[1]):min(H, displaced_centroid[1] + half_sizes[1] + patch_sizes_voxels[1] % 2),
+        max(0, displaced_centroid[2] - half_sizes[2]):min(W, displaced_centroid[2] + half_sizes[2] + patch_sizes_voxels[2] % 2)
+    ]
 
-    except IndexError:
-        return None
+    return patch
 
 def select_best_patches(folder_path):
     discs = ['L1_L2', 'L2_L3', 'L3_L4', 'L4_L5', 'L5_S1']

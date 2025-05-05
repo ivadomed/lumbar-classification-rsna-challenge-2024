@@ -17,7 +17,7 @@ def main():
     
     os.system(f'python niftification.py {input_dir} {output_dir} {csv_name}')
     os.system(f'python totalspineseg.py {output_dir}')
-    os.system(f'python extraction_with_physical_volume.py {output_dir}')
+    os.system(f'python extraction.py {output_dir}')
 
     print("Preprocessing completed.")
 

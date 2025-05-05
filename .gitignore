@@ -9,3 +9,4 @@
 train_series_descriptions.csv
 *model*
 wandb
+inference
