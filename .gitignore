@@ -7,3 +7,5 @@
 /dcom_data
 /nii_data
 train_series_descriptions.csv
+*model*
+wandb
