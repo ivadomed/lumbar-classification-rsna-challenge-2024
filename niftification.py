@@ -11,22 +11,7 @@ import pandas as pd
 from tqdm import tqdm
 from image import Image
 
-def resample_nifti(image, target_spacing=(2.6, 0.4, 0.4), mode='linear'):
-    """
-    Resample une image NIfTI en 3D à un nouvel espacement spécifié.
-    
-    Args:
-        image (nibabel.Nifti1Image): Image NIfTI à resampler.
-        target_spacing (tuple): Nouvel espacement des voxels (en mm).
-    
-    Returns:
-        None
-    """
-    # Appliquer le resampling
-    resampler = tio.Resample(target_spacing, image_interpolation=mode)
-    resampled_image = resampler(image)
 
-    return resampled_image
 
 # use a subprocess to convert the dicom images to nifti format, requires the output path
 def convert_dicom_to_nifti(subject_id, series_uid, input_path, output_path):
@@ -182,14 +167,8 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 
                 oriented_image = reorient(image)
                 # then apply the resampling to the median values resolution for axial T2w images
-                if acq == 'ax': 
-                    final_image = resample_nifti(oriented_image, target_spacing=(0.4, 0.4, 4.4), mode='linear')  
-                    
-                    nib.save(final_image, new_path)
-                else:
-                    final_image = resample_nifti(oriented_image, target_spacing=(4.0, 0.4, 0.4), mode='linear')  
-
-                    nib.save(final_image, new_path)
+                nib.save(final_image, new_path)
+                
                     
 
         else : 
@@ -206,18 +185,8 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 # reorient the image
                 image = nib.Nifti1Image(anat_data, new_affine, header=anat_header)
                 oriented_image = reorient(image)
-
-                # then apply the resampling to the median values resolution for axial T2w images
-                if acq == 'ax': 
-                    
-                    
-                    
-                    final_image = resample_nifti(oriented_image, target_spacing=(0.4, 0.4, 4.4), mode='linear') 
-                    nib.save(final_image, new_path)
-                else:
-
-                    final_image = resample_nifti(oriented_image, target_spacing=(4.0, 0.4, 0.4), mode='linear')  
-                    nib.save(final_image, new_path)
+                nib.save(final_image, new_path)
+               
 
 # Main function to run the processing
 def main():
