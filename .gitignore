@@ -10,3 +10,4 @@ train_series_descriptions.csv
 *model*
 wandb
 inference
+*__pycache__* 

@@ -52,3 +52,5 @@ We aim to finally obtain the final following patches classifying the three diffe
 
 
 Files can contain commented lines of code for importations on kaggle notebooks at their beginning. You will need to run those to replicate the preprocesing in a kaggle notebook. 
+
+Make sur to be in the preprocessing folder when launching tss. 
