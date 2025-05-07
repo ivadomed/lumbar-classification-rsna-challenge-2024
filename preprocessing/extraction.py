@@ -398,8 +398,6 @@ def extract_patches_from_discs(nii_folder, output_folder):
     sagittal_T1_images.sort()
     sagittal_T2_segmentations.sort()
     
-    print(len(sagittal_T2_segmentations),len(sagittal_T2_images))
-    print(len(sagittal_T1_segmentations),len(sagittal_T1_images))
 
     extract_and_save_sagittal_patches(sagittal_T2_images, sagittal_T2_segmentations, nii_folder, output_folder)
     extract_and_save_sagittal_patches(sagittal_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)

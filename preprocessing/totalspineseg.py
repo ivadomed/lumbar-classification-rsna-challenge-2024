@@ -26,7 +26,6 @@ def run_totalspineseg(source_dir):
         os.makedirs(output_temp, exist_ok=True)
 
         for subdir in batch:
-            print(subdir)
             try:
                 anat_path = os.path.join(source_dir, subdir, 'anat')
                 if os.path.exists(anat_path):

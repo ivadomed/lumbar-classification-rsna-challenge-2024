@@ -117,7 +117,7 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
     """
     if subject_id not in train['study_id'].astype(str).values:
         return
-
+    
     filtered_series = train[train['study_id'] == int(subject_id)].iloc[0]
     ptobj = meta_obj[str(filtered_series['study_id'])]
 
@@ -165,7 +165,7 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 # reorient the image
                 image = nib.Nifti1Image(anat_data, new_affine, header=anat_header)
                 
-                oriented_image = reorient(image)
+                final_image = reorient(image)
                 # then apply the resampling to the median values resolution for axial T2w images
                 nib.save(final_image, new_path)
                 
@@ -184,7 +184,7 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
                 new_path = corrected_nifti_path + '.nii.gz'
                 # reorient the image
                 image = nib.Nifti1Image(anat_data, new_affine, header=anat_header)
-                oriented_image = reorient(image)
+                final_image = reorient(image)
                 nib.save(final_image, new_path)
                
 
@@ -236,7 +236,7 @@ def main():
     # Process subjects and set up directories
     
     for subject_id in tqdm(subject_ids):  # Adjust range as needed: 1975 subjects
-        try: 
+        #try: 
             subject_id = str(subject_id)
             
             # Create specific directories
@@ -244,8 +244,9 @@ def main():
             os.makedirs(os.path.join(output_folder, f'sub-{subject_id}', 'anat'), exist_ok=True)
 
             # Process subject and set up directories
+            
             process_subject(subject_id, input_folder, output_folder, df_meta_f, meta_obj)
-        except: 
+        #except: 
             print(f'failed preprocessing for {subject_id}')
  
 
