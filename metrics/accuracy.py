@@ -25,44 +25,71 @@ def is_point_in_patch(x, y, z, patch_slices):
 
 # function to calculate the com of a disk and shift it along the disk axis (for the foramina)
 # this fdunction is not really time consuming (I was worried for regionprops but it's a matter of ms)
-def get_shifted_point_along_disk(disk_mask):
-    """
-    Calcule un point décalé selon l'axe du disque en LPI.
-    
-    Args:
-        disk_mask: Masque binaire 3D du disque
-    
-    Returns:
-        point: numpy array des coordonnées (x,y,z) du point décalé
-        disk_radius: rayon calculé du disque selon son axe
-        direction_vector: vecteur normalisé indiquant la direction du disque
-    """
-    # Trouver le centre du disque
-    centroid = center_of_mass(disk_mask)
-    # Trouver la slice sagittale contenant le centre du disque
-    sagittal_slice_idx = int(centroid[0])
-    sagittal_slice = disk_mask[sagittal_slice_idx, :, :]
-    
-    # Calculer l'orientation sur la slice 2D
-    props = regionprops(sagittal_slice.astype(int))[0]
-    orientation = props.orientation  # en radians
+import numpy as np
+from scipy.ndimage import center_of_mass
+from skimage.measure import regionprops
+import nibabel as nib
 
-    direction_vector = np.array([
-        0,  # x reste inchangé
-        -np.cos(orientation),   # y
-        -np.sin(orientation)    # z
-    ])
+def get_shifted_point_along_disk(disk_mask, affine):
+    """
+    Compute a shifted point along the disk's anatomical axis, accounting for scan orientation.
+
+    Args:
+        disk_mask: 3D binary mask of the disk
+        affine: affine matrix of the image
+
+    Returns:
+        shifted_point: numpy array of (x, y, z) voxel coordinates of the shifted point
+        disk_radius: approximate radius along disk axis (in voxels)
+        direction_vector: unit vector showing shift direction (in voxel space)
+    """
+    # Compute the center of mass in voxel space
+    centroid = center_of_mass(disk_mask)
+    # Determine anatomical orientation codes
+    orientation = nib.aff2axcodes(affine)  # e.g., ('A', 'I', 'L') or ('L', 'P', 'I')
     
-    # Normaliser le vecteur
-    direction_vector = direction_vector / np.linalg.norm(direction_vector)
+    # Find which axis is sagittal (LR), coronal (AP), axial (IS)
+    sagittal_axis = orientation.index('L') if 'L' in orientation else orientation.index('R')
+    coronal_axis  = orientation.index('P') if 'P' in orientation else orientation.index('A')
+    axial_axis    = orientation.index('I') if 'I' in orientation else orientation.index('S')
     
-    # Calculer le rayon du disque (projection sur le vecteur)
+    # Extract the sagittal slice at centroid
+    sagittal_slice_idx = int(centroid[sagittal_axis])
+    slicer = [slice(None)] * 3
+    slicer[sagittal_axis] = sagittal_slice_idx
+    sagittal_slice = disk_mask[tuple(slicer)]
+
+    # Collapse to 2D (coronal and axial)
+    axes_2d = [i for i in range(3) if i != sagittal_axis]
+    sagittal_2d = np.transpose(sagittal_slice, axes_2d)
+
+    # Regionprops for orientation
+    props = regionprops(sagittal_2d.astype(int))
+    if not props:
+        return centroid, 0, np.zeros(3)  # fallback if empty
+
+    orientation_angle = props[0].orientation  # radians
+
+    # Construct direction vector in voxel space
+    direction_vector = np.zeros(3)
+    direction_vector[axes_2d[0]] = -np.cos(orientation_angle)  # coronal axis
+    direction_vector[axes_2d[1]] = -np.sin(orientation_angle)  # axial axis
+    # Flip direction vector to match LPI reference
+    if orientation[coronal_axis] == 'P':  # anterior = negative in LPI
+        direction_vector[coronal_axis] *= -1
+    if orientation[axial_axis] == 'S':  # superior = negative in LPI
+        direction_vector[axial_axis] *= -1
+
+    # Normalize
+    direction_vector /= np.linalg.norm(direction_vector)
+
+    # Estimate radius along direction vector
     mask_points = np.array(np.where(disk_mask)).T
     centered_points = mask_points - centroid
     projections = np.abs(centered_points @ direction_vector)
     disk_radius = np.max(projections)
-    
-    # Calculer le point décalé
+
+    # Compute shifted point
     shifted_point = centroid + direction_vector * disk_radius
 
     return shifted_point
@@ -87,8 +114,58 @@ def patch_extraction_foraminal(vol, mask, affine):
     # mask = torch.Tensor(mask)
     # nonzero_indices = torch.nonzero(mask)
     
-    # Calculate centroid of the mask and shift it along the disk axis
-    centroid = get_shifted_point_along_disk(mask).astype(int)
+    """# Calculate centroid of the mask and shift it along the disk axis
+    centroid = get_shifted_point_along_disk(mask, affine).astype(int)
+    print(centroid)
+
+    # Get voxel sizes from the affine matrix
+    voxel_sizes = np.abs(np.diag(affine)[:3])
+    
+        # Define patch size in cm
+    patch_size_mm = {
+        'd': 5,  # depth (along IS)
+        'h': 5,  # height (along AP)
+        'w': 5   # width (along LR)
+    }
+
+    # Get voxel sizes from the affine matrix
+    voxel_sizes = np.abs(np.diag(affine)[:3])
+    print(voxel_sizes)
+    # Patch sizes in voxels
+    patch_sizes_voxels = {
+        0: int(patch_size_mm['d'] / voxel_sizes[0]),
+        1: int(patch_size_mm['h'] / voxel_sizes[1]),
+        2: int(patch_size_mm['w'] / voxel_sizes[2])
+    }
+
+    
+
+    # Determine which axis corresponds to LR and its direction
+    orientation = nib.aff2axcodes(affine)  # e.g., ('A', 'I', 'L') or ('L', 'P', 'I')
+    # Find which axis is sagittal (LR), coronal (AP), axial (IS)
+    lr_axis = orientation.index('L') if 'L' in orientation else orientation.index('R')
+
+    lr_sign = np.sign(affine[lr_axis, 0])       # negative if increasing index goes L→R
+    print(lr_axis, lr_sign)
+
+
+    # Shift centroid in both LR directions
+    centroid = centroid.astype(int)
+    
+    patch1 = [[],[],[]]
+    patch2 = [[],[],[]]
+    
+    for i in range(3):
+        if i == lr_axis:
+            patch1[i] = [max(0, centroid[i] + 1), min(D, centroid[i] + patch_sizes_voxels[i] // 2)]
+            patch2[i] = [max(0, centroid[i] - 1 - patch_sizes_voxels[i] // 2), min(D, centroid[i] -1)]
+        else:
+            print(centroid[i] , patch_sizes_voxels[i])
+            patch1[i] = [max(0, centroid[i] - patch_sizes_voxels[i] // 2), min(D, centroid[i] + patch_sizes_voxels[i] // 2)]
+            patch2[i] = [max(0, centroid[i] - patch_sizes_voxels[i] // 2), min(D, centroid[i] + patch_sizes_voxels[i] // 2)]"""
+
+      # Calculate centroid of the mask and shift it along the disk axis
+    centroid = get_shifted_point_along_disk(mask, affine).astype(int)
 
     # Get voxel sizes from the affine matrix
     voxel_sizes = np.abs(np.diag(affine)[:3])
@@ -108,15 +185,27 @@ def patch_extraction_foraminal(vol, mask, affine):
 
     
     # Extract patches centered on centroid with posterior displacement
-    patch1 = [[max(0, centroid[0] + 1),min(D, centroid[0] + patch_sizes_voxels['d']//2 +1)],
-        [max(0, centroid[1] - patch_sizes_voxels['h']//2),min(H, centroid[1] + patch_sizes_voxels['h']//2)],
-        [max(0, centroid[2] - patch_sizes_voxels['w']//2),min(W, centroid[2] + patch_sizes_voxels['w']//2)]]
+    patch1 = [
+        max(0, centroid[0] + 1),min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
+        max(0, centroid[1] - patch_sizes_voxels['h']//2),min(H, centroid[1] + patch_sizes_voxels['h']//2),
+        max(0, centroid[2] - patch_sizes_voxels['w']//2),min(W, centroid[2] + patch_sizes_voxels['w']//2)
+    ]
     
-    patch2 = [[max(0, centroid[0] -1 -patch_sizes_voxels['d']//2),min(D, centroid[0]-1)],
-        [max(0, centroid[1] - patch_sizes_voxels['h']//2),min(H, centroid[1] + patch_sizes_voxels['h']//2)],
-        [max(0, centroid[2] - patch_sizes_voxels['w']//2),min(W, centroid[2] + patch_sizes_voxels['w']//2)]]
+    patch2 = [
+        max(0, centroid[0] -1 -patch_sizes_voxels['d']//2),min(D, centroid[0]-1),
+        max(0, centroid[1] - patch_sizes_voxels['h']//2),min(H, centroid[1] + patch_sizes_voxels['h']//2),
+        max(0, centroid[2] - patch_sizes_voxels['w']//2),min(W, centroid[2] + patch_sizes_voxels['w']//2)
+    ]
+
+    print(patch_sizes_voxels)
+    print(patch1, patch2)
+
+    """if lr_sign < 0: 
+        return patch2, patch1
+    else : 
+        return patch1, patch2"""
     
-    return patch1, patch2
+    
 
 # uses lists of sagittal images and segmentations to extract patches for each disc
 def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, nii_folder, output_folder):
@@ -188,6 +277,23 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                                 I = round(float(point['I']), 2)
                                 
                                 inside = is_point_in_patch(L, P, I, patch_slices)
+
+
+                                print({
+                                    "study_id": study_id,
+                                    "level": disc_name,
+                                    "condition": condition,
+                                    "point_in_patch": inside,
+                                    "point_L": L,
+                                    "point_P": P,
+                                    "point_I": I,
+                                    "patch_L_min": patch_slices[0][0],
+                                    "patch_L_max": patch_slices[0][1],
+                                    "patch_P_min": patch_slices[1][0],
+                                    "patch_P_max": patch_slices[1][1],
+                                    "patch_I_min": patch_slices[2][0],
+                                    "patch_I_max": patch_slices[2][1]
+                                })
 
                                 results.append({
                                     "study_id": study_id,
@@ -482,24 +588,24 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
     for subject_folder in os.listdir(root_dir):
         subject_path = os.path.join(root_dir, subject_folder, "anat")
         output_subject_path = os.path.join(output_root_dir, subject_folder, "anat")
-        try : 
-            if os.path.isdir(subject_path):
-                os.makedirs(output_subject_path, exist_ok=True)
-                print(subject_folder)
-                TP_nfn_temp, total_nfn_temp, TP_scs_temp, total_scs_temp, df_subject = extract_patches_from_discs(subject_path, output_subject_path)
-                
-                TP_nfn += TP_nfn_temp
-                total_nfn += total_nfn_temp
-                TP_scs += TP_scs_temp
-                total_scs += total_scs_temp
+        #try : 
+        if os.path.isdir(subject_path):
+            os.makedirs(output_subject_path, exist_ok=True)
+            print(subject_folder)
+            TP_nfn_temp, total_nfn_temp, TP_scs_temp, total_scs_temp, df_subject = extract_patches_from_discs(subject_path, output_subject_path)
+            
+            TP_nfn += TP_nfn_temp
+            total_nfn += total_nfn_temp
+            TP_scs += TP_scs_temp
+            total_scs += total_scs_temp
 
-                
+            
 
-                all_results.append(df_subject)
+            all_results.append(df_subject)
 
-        except: 
+        """except: 
             print(f'failed for {subject_folder}')
-
+        """
 
     # Combine all subject data and write CSV
     if all_results:
