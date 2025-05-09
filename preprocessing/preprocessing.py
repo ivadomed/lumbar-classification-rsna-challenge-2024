@@ -15,9 +15,9 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     
     
-    os.system(f'python preprocessing/niftification.py {input_dir} {output_dir} {csv_name}')
-    os.system(f'python preprocessing/totalspineseg.py {output_dir}')
-    os.system(f'python preprocessing/extraction.py {output_dir}')
+    os.system(f'python niftification.py {input_dir} {output_dir} {csv_name}')
+    #os.system(f'python preprocessing/totalspineseg.py {output_dir}')
+    #os.system(f'python preprocessing/extraction.py {output_dir}')
 
     print("Preprocessing completed.")
 
