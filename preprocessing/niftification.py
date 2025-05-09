@@ -71,7 +71,7 @@ def merge_nifti_volumes(output_path, subject_id, series_uid):
 # reorient the image to a common orientation "LPI"
 def reorient(image):
 
-    # Get image dtype from the image data (preferred over header dtype to avoid data loss)
+    """# Get image dtype from the image data (preferred over header dtype to avoid data loss)
     image_data_dtype = getattr(np, np.asanyarray(image.dataobj).dtype.name)
 
     # Rescale the image to the output dtype range if necessary
@@ -97,7 +97,8 @@ def reorient(image):
     output_image.set_qform(output_image.affine)
     output_image.set_sform(output_image.affine)
 
-    return output_image
+    return output_image"""
+    return image 
 
 
 
