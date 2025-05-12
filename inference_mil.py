@@ -1,3 +1,6 @@
+''' file to run inference on the validation set for the SAS and SCS models '''
+# inference should be added for NFN also..
+
 import os
 import torch
 import json

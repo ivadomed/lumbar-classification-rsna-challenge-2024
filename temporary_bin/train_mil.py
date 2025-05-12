@@ -6,13 +6,8 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, ConcatDataset
 import wandb
 from tqdm import tqdm
-<<<<<<< HEAD
 from prepare_data_mil import prepare_data_scs, prepare_data_sas, prepare_data_nfn, prepare_data_sas_option
 from mil_definition import MILmodel, convnext_small
-=======
-from prepare_data_mil import prepare_data_scs, prepare_data_sas, prepare_data_nfn
-from mil_definition import MILmodel
->>>>>>> 6595a9dced291a2b62b4158335f3e1c8169f138a
 import numpy as np
 import matplotlib.pyplot as plt
 import random
@@ -20,7 +15,6 @@ import json
 import math
 import timm 
 
-import timm
 
 convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',
                                    in_chans=1, pretrained=True, num_classes=0)
@@ -1136,43 +1130,6 @@ if __name__ == "__main__":
     data_dir = '../../duke/public/rsna_challenge/20250410nii_folds'
     csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
 
-<<<<<<< HEAD
-    '''# train using folds
-    models, fold_results = train_model_sas_folds(
-        data_dir=data_dir,
-        csv_file=csv_file,
-        num_epochs=12,
-        batch_size=2,
-        learning_rate=6e-5,
-        freeze_encoder_epoch=6,
-        cosine_epochs=10,
-        eta_min_factor=0.04,
-        fine_tune_learning_rate=2e-5,
-        fine_tune_cosine_epochs=5,
-        fine_tune_eta_min_factor=0.1,
-        num_layers=2,
-        device=device
-    )'''
-
-    # Train model
-    model = train_model_sas(
-        data_dir_simple,
-        csv_file,
-        num_epochs=20,
-        batch_size=4,
-        learning_rate=6e-5,
-        freeze_encoder_epoch=21,
-        warmup_epochs=4,
-        cosine_epochs=16,
-        eta_min_factor=0.3, # below not usefull here
-        fine_tune_learning_rate=5e-6,
-        fine_tune_cosine_epochs=12,
-        fine_tune_eta_min_factor=10.0,
-        num_layers=2,
-        device=device,
-        pretrained_model_path= None, #'/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/mil_model_sas_992085/best_mil_model.pth',
-        save_4_wv=True
-=======
 
     convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',
                                    in_chans=1, pretrained=True, num_classes=0)
@@ -1196,6 +1153,5 @@ if __name__ == "__main__":
         aux_loss_schedule='constant',
         num_layers=1,
         device=device,  
->>>>>>> 6595a9dced291a2b62b4158335f3e1c8169f138a
     )
 

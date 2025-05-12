@@ -1,25 +1,24 @@
-''' train the NFN MIL model '''
+''' train the SCS MIL model '''
 
 import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, ConcatDataset
 from training_utils import CosineAnnealingStabilizeLR, weight_challenge, train_epoch, validate
 import wandb
 from tqdm import tqdm
-from prepare_nfn import prepare_data_nfn
+from prepare_scs import prepare_data_scs
 from mil_definition import MILmodel
 import numpy as np
 import matplotlib.pyplot as plt
 import random
 import json
 import math
-import timm
+import timm 
 
-
-
-# function to plot the first batch of each epoch on wandb
+ # function to visualize a batch of images and save them to wandb for scs
 def visualize_batch(batch, epoch):
     """
     Visualize a batch of images and save them to wandb
@@ -67,9 +66,8 @@ def visualize_batch(batch, epoch):
         print(f"Warning: Could not visualize batch: {str(e)}")
         plt.close('all')  # Ensure all figures are closed in case of error
 
-# main function to train the NFN MIL model
-def train_model_nfn(
-    convnext_small,
+
+def train_model_scs(
     data_dir,
     csv_file,
     num_epochs=20,
@@ -82,11 +80,11 @@ def train_model_nfn(
     eta_min_factor_encoder=0.04,  # Facteur pour calculer eta_min de l'encoder (par rapport à encoder_lr)
     eta_min_factor_other=0.04,  # Facteur pour calculer eta_min du reste (par rapport à learning_rate)
     num_layers=1,
-    device='cuda'
+    device='cuda',
 ):
     # Initialize wandb
     wandb.init(
-        project="lumbar-mil-nfn",
+        project="lumbar-mil-scs",
         config={
             "epochs": num_epochs,
             "batch_size": batch_size,
@@ -104,29 +102,27 @@ def train_model_nfn(
     )
 
     # create a folder with a random name in the current directory
-    folder_name = f"mil_model_nfn{random.randint(0, 1000000)}"
-    os.makedirs(folder_name, exist_ok=False)
+    folder_name = f"mil_model_scs{random.randint(0, 1000000)}"
+    os.makedirs(folder_name, exist_ok=True)
 
     # Prepare data
     train_dir = os.path.join(data_dir, 'training')
     val_dir = os.path.join(data_dir, 'validation')
 
     # Create datasets
-    train_data = prepare_data_nfn(train_dir, csv_file, random=True)
-    val_data= prepare_data_nfn(val_dir, csv_file, random=False)
-    
+    train_data = prepare_data_scs(train_dir, csv_file, random=True)
+    val_data = prepare_data_scs(val_dir, csv_file, random=False)
+
     # Create dataloaders
     train_loader = DataLoader(train_data, batch_size=batch_size,
-                              shuffle=True, num_workers=0)
+                              shuffle=True, num_workers=4)
     val_loader = DataLoader(val_data, batch_size=batch_size,
-                            shuffle=False, num_workers=0)
+                            shuffle=False, num_workers=4)
 
     # Initialize model
     model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
 
     # Loss function - CrossEntropyLoss with class weights if needed
-    #criterion_encoder = nn.CrossEntropyLoss()
-    #criterion_no_encoder = nn.CrossEntropyLoss(weight=weight_challenge)
     criterion = nn.CrossEntropyLoss(weight=weight_challenge)
 
     # Séparer les paramètres du ConvNext et du reste du modèle
@@ -143,13 +139,13 @@ def train_model_nfn(
     encoder_scheduler = CosineAnnealingStabilizeLR(
         optimizer,  # Pass the entire optimizer
         T_max=len(train_loader) * encoder_cosine_epochs,  # Période spécifique pour l'encoder
-        eta_min=encoder_lr * eta_min_factor_encoder  # Minimum learning rate pour l'encoder
+        eta_min=encoder_lr * eta_min_factor_encoder,  # Minimum learning rate pour l'encoder
     )
     
     other_scheduler = CosineAnnealingStabilizeLR(
         optimizer,  # Pass the entire optimizer
         T_max=len(train_loader) * other_cosine_epochs,  # Période spécifique pour le reste
-        eta_min=learning_rate * eta_min_factor_other  # Minimum learning rate pour le reste
+        eta_min=learning_rate * eta_min_factor_other,  # Minimum learning rate pour le reste
     )
 
     # Log initial learning rates and minimum values
@@ -168,14 +164,12 @@ def train_model_nfn(
     best_val_loss = float('inf')
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
-        #criterion = criterion_encoder
+
         # Freeze le ConvNext après freeze_encoder_epoch époques
         if epoch >= freeze_encoder_epoch:
-            #criterion = criterion_no_encoder
             for param in model.encoder.parameters():
                 param.requires_grad = False
             print("ConvNext encoder frozen")
-
 
         # Train
         train_loss, train_acc = train_epoch(
@@ -226,35 +220,38 @@ def train_model_nfn(
     wandb.finish()
     return model
 
-# lauching a training with the NFN model
+
+# launch a training with the SCS model
 if __name__ == "__main__":
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
     # Set paths
-    data_dir = '../../duke/public/rsna_challenge/20250408nii_data'
+    data_dir_simple = '../../duke/public/rsna_challenge/20250212nii_data_splits'
+    data_dir = '../../duke/public/rsna_challenge/20250410nii_folds'
     csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
+
 
     convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',
                                    in_chans=1, pretrained=True, num_classes=0)
 
 
     # Train model
-    model = train_model_nfn(
+    model = train_model_scs(
         convnext_small,
         data_dir=data_dir,
         csv_file=csv_file,
-        num_epochs=20,
+        num_epochs=30,
         batch_size=2,
-        learning_rate=0.000005,
-        encoder_lr=0.00000005,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=2,  # Freeze le ConvNext après 3 époques
+        learning_rate=5e-3,
+        encoder_lr=5e-4,  # Learning rate plus faible pour le ConvNext
+        freeze_encoder_epoch=5,  # Freeze le ConvNext après 3 époques
         encoder_cosine_epochs=10,  # Le ConvNext atteint son minimum en 2 époques
         other_cosine_epochs=6,  # Le reste du modèle atteint son minimum en 4 époques
         eta_min_factor_encoder=0.1,  # Le lr de l'encoder descend à 4% de sa valeur initiale
         eta_min_factor_other=0.1,  # Le lr du reste descend à 4% de sa valeur initiale
-        num_layers=2,
-        device=device
+        num_layers=1,
+        device=device,  
     )
-    
+
