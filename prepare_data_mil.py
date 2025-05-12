@@ -8,7 +8,8 @@ from monai.transforms import (
     RandGaussianNoised, RandAffined, RandZoomd, Rand3DElasticd, Flipd,
     SpatialCropd, Spacingd
 )
-from torch.utils.data import DataLoader
+
+from torch.utils.data import DataLoader, ConcatDataset
 from monai.data import Dataset
 import matplotlib.pyplot as plt
 import nibabel as nib
@@ -234,7 +235,7 @@ def get_transforms_nfn(mode='basic', side = "right"):
 
     if mode == 'basic':
         common_transforms = Compose([
-            Spacingd(keys=['image'], pixdim=(4.0, 0.4, 0.4), mode=('bilinear')),
+            #Spacingd(keys=['image'], pixdim=(4.0, 0.4, 0.4), mode=('bilinear')),
             SpatialPadd(keys=['image'], spatial_size=(6, 100, 100)),
             CenterSpatialCropd(
                 keys=['image'],
@@ -245,8 +246,8 @@ def get_transforms_nfn(mode='basic', side = "right"):
     elif mode == 'random':
         # Same transforms but with random augmentations
         common_transforms = Compose([
-            Spacingd(keys=['image'], pixdim=(4.0, 0.4, 0.4), mode=('bilinear')),
-            RandRotated(keys=['image'], prob=0.8, range_x=0.2),
+            #Spacingd(keys=['image'], pixdim=(4.0, 0.4, 0.4), mode=('bilinear')),
+            RandRotated(keys=['image'], prob=0.8, range_y=0.2),
             RandGaussianNoised(keys=['image'], prob=0.4, mean=0.0, std=0.1),
             RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)),
             SpatialPadd(keys=['image'], spatial_size=(6, 100, 100)),
@@ -260,7 +261,7 @@ def get_transforms_nfn(mode='basic', side = "right"):
     # Create list of transforms for processing 2D slices
     slice_transforms = Compose([
         # Custom transform to extract and resize slices
-        ExtractSlicesD_nfn(keys=['image'], target_size=(384, 384)),
+        ExtractSlicesD_nfn(keys=['image'], target_size=(224, 224)),
         # Scale and normalize
         ScaleIntensityd(
             keys=[f'slice_{i}' for i in range(6)]
@@ -282,7 +283,7 @@ def get_transforms_nfn(mode='basic', side = "right"):
         # Add a transform to ensure bag has the correct shape
         Lambdad(
             keys=['bag'],
-            func=lambda x: x.reshape(6, 1, 384, 384)
+            func=lambda x: x.reshape(6, 1, 224, 224)
         )
     ])
 
@@ -420,7 +421,8 @@ def prepare_data_sas_option(data_dir, csv_file, option=2, random=False):
 
 
 def prepare_data_nfn(data_dir, csv_file, random=True):
-    data = []
+    data_right = []
+    data_left = []
     labels_df = pd.read_csv(csv_file)
 
     counter = 0
@@ -428,7 +430,7 @@ def prepare_data_nfn(data_dir, csv_file, random=True):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
 
     for subject in os.listdir(data_dir):
-        print(subject)
+        #print(subject)
         """if counter >40: 
             break """
         subject_dir = os.path.join(data_dir, subject, 'anat')
@@ -449,6 +451,8 @@ def prepare_data_nfn(data_dir, csv_file, random=True):
                         label_column = (
                             f'{orientation}_neural_foraminal_narrowing_{disk_level.lower()}'
                         )
+                        print(file)
+                        print(label_column )
                         # Get raw label
                         label = labels_df.loc[
                             labels_df['study_id'] == subject_id,
@@ -459,14 +463,20 @@ def prepare_data_nfn(data_dir, csv_file, random=True):
                         label_numeric = text2int.get(label, -1)
                         if label_numeric != -1:
                             counter += 1
-                            data.append({
-                                "image": image_path,
-                                "label": label_numeric
-                            })
+                            if "left" in image_path: 
+                                data_right.append({
+                                    "image": image_path,
+                                    "label": label_numeric
+                                })
+                            if "right" in image_path: 
+                                data_left.append({
+                                    "image": image_path,
+                                    "label": label_numeric
+                                })
 
     print(f"Number of loaded data: {counter}")
-    # add a distinction between left and right ? 
-    return Dataset(data=data, transform=get_transforms_nfn(mode='random') if random else get_transforms_nfn(mode='basic'))
+    return ConcatDataset([Dataset(data=data_left, transform=get_transforms_nfn(mode='random', side='left') if random else get_transforms_nfn(mode='basic',side='left')), Dataset(data=data_right, transform=get_transforms_nfn(mode='random', side='right') if random else get_transforms_nfn(mode='basic',side='right'))]) 
+
 
 
 

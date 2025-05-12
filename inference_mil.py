@@ -2,7 +2,7 @@ import os
 import torch
 import json
 from torch.utils.data import DataLoader, ConcatDataset
-from prepare_data_mil import prepare_data_scs, prepare_data_sas, prepare_data_sas_option
+from prepare_data_mil import prepare_data_scs, prepare_data_sas, prepare_data_sas_option, prepare_data_nfn
 from mil_definition import MILmodel, convnext_small
 from train_mil import weight_challenge, run_inference_on_validation_set
 import numpy as np
@@ -126,6 +126,9 @@ def main():
     print(f"Using device: {device}")
     
     # Paths
+    model_dir = 'mil_model_nfn711201'
+    data_dir = '../../duke/public/rsna_challenge/20250408nii_data'
+    csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
     model_dir = '/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/mil_model_sas247141'
     data_dir = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20250212nii_data_splits'
     csv_file = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/dcom_data/train.csv'
@@ -136,9 +139,7 @@ def main():
     
     # Create validation dataset and dataloader
     val_dir = os.path.join(data_dir, 'validation')
-    # val_data = prepare_data_scs(val_dir, csv_file, random=False)
-    val_data_l, val_data_r = prepare_data_sas(val_dir, csv_file, random=False)
-    val_data = ConcatDataset([val_data_l, val_data_r])
+    val_data = prepare_data_nfn(val_dir, csv_file, random=False)
     val_loader = DataLoader(val_data, 
                           batch_size=config['batch_size'],
                           shuffle=False,

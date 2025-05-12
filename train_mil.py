@@ -6,13 +6,19 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, ConcatDataset
 import wandb
 from tqdm import tqdm
+<<<<<<< HEAD
 from prepare_data_mil import prepare_data_scs, prepare_data_sas, prepare_data_nfn, prepare_data_sas_option
 from mil_definition import MILmodel, convnext_small
+=======
+from prepare_data_mil import prepare_data_scs, prepare_data_sas, prepare_data_nfn
+from mil_definition import MILmodel
+>>>>>>> 6595a9dced291a2b62b4158335f3e1c8169f138a
 import numpy as np
 import matplotlib.pyplot as plt
 import random
 import json
 import math
+import timm 
 
 import timm
 
@@ -681,6 +687,7 @@ def train_model_sas(
 
 
 def train_model_nfn(
+    convnext_small, 
     data_dir,
     csv_file,
     num_epochs=20,
@@ -695,7 +702,8 @@ def train_model_nfn(
     aux_loss_weight=0,
     aux_loss_schedule='constant',
     num_layers=1,
-    device='cuda'
+    device='cuda',
+    
 ):
     # Initialize wandb
     wandb.init(
@@ -720,7 +728,7 @@ def train_model_nfn(
 
     # create a folder with a random name in the current directory
     folder_name = f"mil_model_nfn{random.randint(0, 1000000)}"
-    os.makedirs(folder_name, exist_ok=True)
+    os.makedirs(folder_name, exist_ok=False)
 
     # Prepare data
     train_dir = os.path.join(data_dir, 'training')
@@ -729,9 +737,7 @@ def train_model_nfn(
     # Create datasets
     train_data = prepare_data_nfn(train_dir, csv_file, random=True)
     val_data= prepare_data_nfn(val_dir, csv_file, random=False)
-    # train_data = ConcatDataset([train_data_left, train_data_right])
-    # val_data = ConcatDataset([val_data_left, val_data_right])
-
+    
     # Create dataloaders
     train_loader = DataLoader(train_data, batch_size=batch_size,
                               shuffle=True, num_workers=0)
@@ -742,6 +748,8 @@ def train_model_nfn(
     model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
 
     # Loss function - CrossEntropyLoss with class weights if needed
+    #criterion_encoder = nn.CrossEntropyLoss()
+    #criterion_no_encoder = nn.CrossEntropyLoss(weight=weight_challenge)
     criterion = nn.CrossEntropyLoss(weight=weight_challenge)
 
     # Séparer les paramètres du ConvNext et du reste du modèle
@@ -795,9 +803,10 @@ def train_model_nfn(
     best_val_loss = float('inf')
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
-
+        #criterion = criterion_encoder
         # Freeze le ConvNext après freeze_encoder_epoch époques
         if epoch >= freeze_encoder_epoch:
+            #criterion = criterion_no_encoder
             for param in model.encoder.parameters():
                 param.requires_grad = False
             print("ConvNext encoder frozen")
@@ -1127,6 +1136,7 @@ if __name__ == "__main__":
     data_dir = '../../duke/public/rsna_challenge/20250410nii_folds'
     csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
 
+<<<<<<< HEAD
     '''# train using folds
     models, fold_results = train_model_sas_folds(
         data_dir=data_dir,
@@ -1162,5 +1172,30 @@ if __name__ == "__main__":
         device=device,
         pretrained_model_path= None, #'/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/mil_model_sas_992085/best_mil_model.pth',
         save_4_wv=True
+=======
+
+    convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',
+                                   in_chans=1, pretrained=True, num_classes=0)
+
+
+    # Train model
+    model = train_model_nfn(
+        convnext_small,
+        data_dir=data_dir,
+        csv_file=csv_file,
+        num_epochs=30,
+        batch_size=2,
+        learning_rate=5e-3,
+        encoder_lr=5e-4,  # Learning rate plus faible pour le ConvNext
+        freeze_encoder_epoch=5,  # Freeze le ConvNext après 3 époques
+        encoder_cosine_epochs=10,  # Le ConvNext atteint son minimum en 2 époques
+        other_cosine_epochs=6,  # Le reste du modèle atteint son minimum en 4 époques
+        eta_min_factor_encoder=0.1,  # Le lr de l'encoder descend à 4% de sa valeur initiale
+        eta_min_factor_other=0.1,  # Le lr du reste descend à 4% de sa valeur initiale
+        aux_loss_weight=0,
+        aux_loss_schedule='constant',
+        num_layers=1,
+        device=device,  
+>>>>>>> 6595a9dced291a2b62b4158335f3e1c8169f138a
     )
 

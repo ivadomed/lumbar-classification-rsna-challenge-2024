@@ -113,6 +113,3 @@ class MILmodel(nn.Module):
         
         return main_output, aux_output
 
-
-convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',
-                                   in_chans=1, pretrained=True, num_classes=0)
