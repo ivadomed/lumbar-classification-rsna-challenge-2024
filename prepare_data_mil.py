@@ -373,7 +373,51 @@ def prepare_data_sas(data_dir, csv_file, random=True):
                             counter += 2
  
     print(f"Number of loaded data: {counter}")
-    return Dataset(data=data_left, transform= get_transforms_sas(mode='random', side='left') if random else get_transforms_scs(mode='basic', side='left')), Dataset(data=data_right, transform= get_transforms_sas(mode='random', side='right') if random else get_transforms_scs(mode='basic', side='right') )
+    return Dataset(data=data_left, transform= get_transforms_sas(mode='random', side='left') if random else get_transforms_sas(mode='basic', side='left')), Dataset(data=data_right, transform= get_transforms_sas(mode='random', side='right') if random else get_transforms_sas(mode='basic', side='right') )
+
+def prepare_data_sas_option(data_dir, csv_file, option=2, random=False):
+    data_left = []
+    data_right = []
+    labels_df = pd.read_csv(csv_file)
+
+    counter = 0
+    # Label conversion dictionary
+    text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
+
+    for subject in os.listdir(data_dir):
+        print(subject)
+        subject_dir = os.path.join(data_dir, subject, 'anat')
+        if os.path.isdir(subject_dir):
+            for file in os.listdir(subject_dir):
+                if '_patch.nii.gz' in file and 'foramen' not in file:
+                    image_path = os.path.join(subject_dir, file)
+                    parts = image_path.split('_')
+                    disk_level = f"{parts[-3]}_{parts[-2]}"
+
+                    if os.path.exists(image_path):
+                        
+                        subject_id = (subject.replace('sub-', ''))
+
+                        label_column_sasl = f'left_subarticular_stenosis_{disk_level.lower()}'
+                        label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
+                        # Obtenir l'étiquette brute
+
+                        label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
+                        label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
+                        
+                        # Convertir l'étiquette textuelle en valeur numérique
+                        label_numeric_sasr = text2int.get(label_sasr, -1)
+                        label_numeric_sasl = text2int.get(label_sasl, -1)
+                        if label_numeric_sasr == option:
+                            data_right.append({"image": image_path, "label": label_numeric_sasr})
+                            counter += 1
+                        if label_numeric_sasl == option:
+                            data_left.append({"image": image_path, "label": label_numeric_sasl})
+                            counter += 1
+ 
+    print(f"Number of loaded data: {counter}")
+    return Dataset(data=data_left, transform= get_transforms_sas(mode='random', side='left') if random else get_transforms_sas(mode='basic', side='left')), Dataset(data=data_right, transform= get_transforms_sas(mode='random', side='right') if random else get_transforms_sas(mode='basic', side='right') )
+
 
 def prepare_data_nfn(data_dir, csv_file, random=True):
     data = []

@@ -1,15 +1,17 @@
 import os
 import torch
 import json
-from torch.utils.data import DataLoader
-from prepare_data_mil import prepare_data
+from torch.utils.data import DataLoader, ConcatDataset
+from prepare_data_mil import prepare_data_scs, prepare_data_sas, prepare_data_sas_option
 from mil_definition import MILmodel, convnext_small
+from train_mil import weight_challenge, run_inference_on_validation_set
 import numpy as np
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import csv
+import torch.nn as nn
 
 
 def plot_confusion_matrices(y_true, y_pred, save_dir):
@@ -54,8 +56,6 @@ def save_predicted_values(predictions, labels, save_dir):
             writer.writerow([pred, label])
 
 
-
-
 @torch.no_grad()
 def run_inference(model, val_loader, device):
     """
@@ -83,6 +83,42 @@ def run_inference(model, val_loader, device):
         all_probs.extend(main_output.cpu().numpy())
     return np.array(all_preds), np.array(all_labels), np.array(all_probs)
 
+def run_inference_on_severe_cases(model_path, data_dir, csv_file, device='cuda'):
+    """
+    Run inference on severe cases using a pretrained model and calculate CV.
+    
+    Args:
+        model_path (str): Path to the pretrained model (.pth file)
+        data_dir (str): Directory containing the data
+        csv_file (str): Path to the CSV file with labels
+        device (str): Device to run inference on ('cuda' or 'cpu')
+    
+    Returns:
+        float: Coefficient of variation for severe cases
+    """
+    # Load model
+    model = MILmodel(encoder=convnext_small, num_layers=2).to(device)
+    checkpoint = torch.load(model_path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    print(f"Loaded model from epoch {checkpoint['epoch']}")
+    
+    # Prepare data
+    val_dir = os.path.join(data_dir, 'validation')
+    val_data_left, val_data_right = prepare_data_sas_severe(val_dir, csv_file, random=False)
+    val_data = ConcatDataset([val_data_left, val_data_right])
+
+    severe_loader = DataLoader(val_data, 
+                          batch_size=2,
+                          shuffle=False,
+                          num_workers=8)
+
+    criterion = nn.CrossEntropyLoss(weight=weight_challenge)
+    
+    # Run inference and calculate CV
+    cv, mean_loss, var_loss = run_inference_on_validation_set(model, severe_loader, device, criterion)
+    print(f"Coefficient of variation for severe cases: {cv:.4f}, mean loss: {mean_loss:.4f}, var loss: {var_loss:.4f}")
+    
+    return cv
 
 def main():
     # Configuration
@@ -90,7 +126,7 @@ def main():
     print(f"Using device: {device}")
     
     # Paths
-    model_dir = '/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/mil_model_713349'
+    model_dir = '/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/mil_model_sas247141'
     data_dir = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/20250212nii_data_splits'
     csv_file = '/home/ge.polymtl.ca/p121315/duke/public/rsna_challenge/dcom_data/train.csv'
     
@@ -100,7 +136,9 @@ def main():
     
     # Create validation dataset and dataloader
     val_dir = os.path.join(data_dir, 'validation')
-    val_data = prepare_data(val_dir, csv_file, random=False)
+    # val_data = prepare_data_scs(val_dir, csv_file, random=False)
+    val_data_l, val_data_r = prepare_data_sas(val_dir, csv_file, random=False)
+    val_data = ConcatDataset([val_data_l, val_data_r])
     val_loader = DataLoader(val_data, 
                           batch_size=config['batch_size'],
                           shuffle=False,
@@ -130,4 +168,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Example usage
+    model_path = "/home/ge.polymtl.ca/p121315/rsna_git/lumbar-classification-rsna-challenge-2024/models/mil_models/mil_model_sas566773/best_mil_model.pth"
+    data_dir = '../../duke/public/rsna_challenge/20250212nii_data_splits'
+    csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
+    
+    run_inference_on_severe_cases(model_path, data_dir, csv_file)
+
