@@ -9,7 +9,7 @@ from scipy.ndimage import center_of_mass
 from skimage.measure import regionprops
 import pandas as pd
 import ast
-
+from itertools import product
 
 def is_point_in_patch(x, y, z, patch_slices):
     d_slice = patch_slices[0]
@@ -96,7 +96,7 @@ def get_shifted_point_along_disk(disk_mask, affine):
 
 
 # function for sagittal patches
-def patch_extraction_foraminal(vol, mask, affine):
+def patch_extraction_foraminal(vol, mask, affine, pixdim):
     """
     Extract two 3D patches from an MRI volume centered around mask's centroid
     
@@ -114,23 +114,22 @@ def patch_extraction_foraminal(vol, mask, affine):
     # mask = torch.Tensor(mask)
     # nonzero_indices = torch.nonzero(mask)
     
-    """# Calculate centroid of the mask and shift it along the disk axis
+    # Calculate centroid of the mask and shift it along the disk axis
     centroid = get_shifted_point_along_disk(mask, affine).astype(int)
-    print(centroid)
+
 
     # Get voxel sizes from the affine matrix
-    voxel_sizes = np.abs(np.diag(affine)[:3])
+    voxel_sizes = pixdim
     
         # Define patch size in cm
     patch_size_mm = {
-        'd': 5,  # depth (along IS)
-        'h': 5,  # height (along AP)
-        'w': 5   # width (along LR)
+        'd': 50,  # depth (along IS)
+        'h': 50,  # height (along AP)
+        'w': 50   # width (along LR)
     }
 
     # Get voxel sizes from the affine matrix
-    voxel_sizes = np.abs(np.diag(affine)[:3])
-    print(voxel_sizes)
+    
     # Patch sizes in voxels
     patch_sizes_voxels = {
         0: int(patch_size_mm['d'] / voxel_sizes[0]),
@@ -146,7 +145,7 @@ def patch_extraction_foraminal(vol, mask, affine):
     lr_axis = orientation.index('L') if 'L' in orientation else orientation.index('R')
 
     lr_sign = np.sign(affine[lr_axis, 0])       # negative if increasing index goes L→R
-    print(lr_axis, lr_sign)
+    #print(lr_axis, lr_sign)
 
 
     # Shift centroid in both LR directions
@@ -160,50 +159,11 @@ def patch_extraction_foraminal(vol, mask, affine):
             patch1[i] = [max(0, centroid[i] + 1), min(D, centroid[i] + patch_sizes_voxels[i] // 2)]
             patch2[i] = [max(0, centroid[i] - 1 - patch_sizes_voxels[i] // 2), min(D, centroid[i] -1)]
         else:
-            print(centroid[i] , patch_sizes_voxels[i])
             patch1[i] = [max(0, centroid[i] - patch_sizes_voxels[i] // 2), min(D, centroid[i] + patch_sizes_voxels[i] // 2)]
-            patch2[i] = [max(0, centroid[i] - patch_sizes_voxels[i] // 2), min(D, centroid[i] + patch_sizes_voxels[i] // 2)]"""
-
-      # Calculate centroid of the mask and shift it along the disk axis
-    centroid = get_shifted_point_along_disk(mask, affine).astype(int)
-
-    # Get voxel sizes from the affine matrix
-    voxel_sizes = np.abs(np.diag(affine)[:3])
-    
-    patch_size_mm = {
-        'd': 50,  # depth
-        'h': 50,  # height
-        'w': 50   # width
-    }
-
-    # Patch sizes (in voxels)
-    patch_sizes_voxels = {
-        'd': (patch_size_mm['d'] / voxel_sizes[0]).astype(int),
-        'h': (patch_size_mm['h'] / voxel_sizes[1]).astype(int),
-        'w': (patch_size_mm['w'] / voxel_sizes[2]).astype(int)
-    }
+            patch2[i] = [max(0, centroid[i] - patch_sizes_voxels[i] // 2), min(D, centroid[i] + patch_sizes_voxels[i] // 2)]
 
     
-    # Extract patches centered on centroid with posterior displacement
-    patch1 = [
-        max(0, centroid[0] + 1),min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
-        max(0, centroid[1] - patch_sizes_voxels['h']//2),min(H, centroid[1] + patch_sizes_voxels['h']//2),
-        max(0, centroid[2] - patch_sizes_voxels['w']//2),min(W, centroid[2] + patch_sizes_voxels['w']//2)
-    ]
-    
-    patch2 = [
-        max(0, centroid[0] -1 -patch_sizes_voxels['d']//2),min(D, centroid[0]-1),
-        max(0, centroid[1] - patch_sizes_voxels['h']//2),min(H, centroid[1] + patch_sizes_voxels['h']//2),
-        max(0, centroid[2] - patch_sizes_voxels['w']//2),min(W, centroid[2] + patch_sizes_voxels['w']//2)
-    ]
-
-    print(patch_sizes_voxels)
-    print(patch1, patch2)
-
-    """if lr_sign < 0: 
-        return patch2, patch1
-    else : 
-        return patch1, patch2"""
+    return patch1, patch2
     
     
 
@@ -224,7 +184,9 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
             
             # Load the volumetric image and sagittal segmentation
             vol = nib.load(img_path).get_fdata()
+            D, H, W = vol.shape
             seg_sag = nib.load(seg_sag_path).get_fdata()
+            pixdim = nib.load(img_path).header['pixdim'][1:4]  # Get pixel dimensions
 
             # Détection des disques dans la segmentation sagittale
             #The values to check are based on the classes in totalspineseg 
@@ -248,7 +210,7 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                 if np.any(disc_mask):  # If the disc is found in the segmentation
                     # Extract the patch using the segmentation mask
                     
-                    patch_img_left, patch_img_right = patch_extraction_foraminal(vol, disc_mask, affine_ex)
+                    patch_img_right, patch_img_left = patch_extraction_foraminal(vol, disc_mask, affine_ex, pixdim)
                     
                     if patch_img_left is not None or patch_img_right is not None:  # Proceed only if patch extraction was successful
 
@@ -271,50 +233,126 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                             ]
                         
                         
-                            for condition, point, patch_slices in point_data:
-                                L = round(float(point['L']), 2)
-                                P = round(float(point['P']), 2)
-                                I = round(float(point['I']), 2)
-                                
-                                inside = is_point_in_patch(L, P, I, patch_slices)
+                            #for condition, point, patch_slices in point_data:
 
+                            condition_left, point_left, patch_slices_left = point_data[0]
+                            condition_right, point_right, patch_slices_right = point_data[1]
 
-                                print({
-                                    "study_id": study_id,
-                                    "level": disc_name,
-                                    "condition": condition,
-                                    "point_in_patch": inside,
-                                    "point_L": L,
-                                    "point_P": P,
-                                    "point_I": I,
-                                    "patch_L_min": patch_slices[0][0],
-                                    "patch_L_max": patch_slices[0][1],
-                                    "patch_P_min": patch_slices[1][0],
-                                    "patch_P_max": patch_slices[1][1],
-                                    "patch_I_min": patch_slices[2][0],
-                                    "patch_I_max": patch_slices[2][1]
-                                })
+                            L_left = round(float(point_left['L']), 2) -1
+                            P_left = round(float(point_left['P']), 2)
+                            I_left = round(float(point_left['I']), 2)
+                            
+                            new_P_left = D - P_left
+                            new_I_left = H - I_left
+                            new_L_left = W - L_left
 
-                                results.append({
-                                    "study_id": study_id,
-                                    "level": disc_name,
-                                    "condition": condition,
-                                    "point_in_patch": inside,
-                                    "point_L": L,
-                                    "point_P": P,
-                                    "point_I": I,
-                                    "patch_L_min": patch_slices[0][0],
-                                    "patch_L_max": patch_slices[0][1],
-                                    "patch_P_min": patch_slices[1][0],
-                                    "patch_P_max": patch_slices[1][1],
-                                    "patch_I_min": patch_slices[2][0],
-                                    "patch_I_max": patch_slices[2][1]
-                                })
+                            L_right = round(float(point_right['L']), 2) -1
+                            P_right = round(float(point_right['P']), 2)
+                            I_right = round(float(point_right['I']), 2)
 
-                                # Count TP/total for each condition
-                                
-                                TP += inside
-                                total += 1
+                            new_P_right = D - P_right
+                            new_I_right = H - I_right
+                            new_L_right = W - L_right
+                            
+
+                            #inside_left = is_point_in_patch(new_P_left , new_I_left , new_L_left ,  patch_slices_left ) or  is_point_in_patch( new_P_left, I_left, new_L_left, patch_slices_left) or is_point_in_patch(P_left, new_I_left, new_L_left, patch_slices_left) or is_point_in_patch( P_left , I_left , L_left , patch_slices_left ) or is_point_in_patch(new_P_left , new_I_left , L_left ,  patch_slices_left ) or   is_point_in_patch( new_P_left, I_left, L_left, patch_slices_left) or is_point_in_patch(P_left, new_I_left, L_left, patch_slices_left) or is_point_in_patch( P_left , I_left , new_L_left , patch_slices_left )
+                            #inside_right = is_point_in_patch(new_P_right , new_I_right , new_L_right ,  patch_slices_right ) or  is_point_in_patch( new_P_right, I_right, new_L_right, patch_slices_right) or is_point_in_patch(P_right, new_I_right, new_L_right, patch_slices_right) or is_point_in_patch( P_right , I_right , L_right , patch_slices_right ) or is_point_in_patch(new_P_right , new_I_right , L_right ,  patch_slices_right ) or   is_point_in_patch( new_P_right, I_right, L_right, patch_slices_right) or is_point_in_patch(P_right, new_I_right, L_right, patch_slices_right) or is_point_in_patch( P_right , I_right , new_L_right , patch_slices_left )
+
+                            
+
+                            
+
+                            # Define coordinate options
+                            P_left_opts  = [P_left,  new_P_left]
+                            I_left_opts  = [I_left,  new_I_left]
+                            L_left_opts  = [L_left,  new_L_left]
+
+                            P_right_opts = [P_right, new_P_right]
+                            I_right_opts = [I_right, new_I_right]
+                            L_right_opts = [L_right, new_L_right]
+
+                            # === First test: original patch assignment ===
+
+                            valid_left_combos = set()
+                            valid_right_combos = set()
+
+                            for p, i, l in product([0, 1], repeat=3):
+                                if is_point_in_patch(P_left_opts[p], I_left_opts[i], L_left_opts[l], patch_slices_left):
+                                    valid_left_combos.add((p, i, l))
+                                if is_point_in_patch(P_right_opts[p], I_right_opts[i], L_right_opts[l], patch_slices_right):
+                                    valid_right_combos.add((p, i, l))
+
+                            common_valid_combos = valid_left_combos & valid_right_combos
+
+                            inside_left = inside_right = False
+
+                            if common_valid_combos:
+                                inside_left = inside_right = True
+                            elif valid_left_combos:
+                                inside_left = True
+                            elif valid_right_combos:
+                                inside_right = True
+
+                            # === Second test: switched patch assignment ===
+
+                            valid_left_combos_swapped = set()
+                            valid_right_combos_swapped = set()
+
+                            for p, i, l in product([0, 1], repeat=3):
+                                if is_point_in_patch(P_left_opts[p], I_left_opts[i], L_left_opts[l], patch_slices_right):  # swapped!
+                                    valid_left_combos_swapped.add((p, i, l))
+                                if is_point_in_patch(P_right_opts[p], I_right_opts[i], L_right_opts[l], patch_slices_left):  # swapped!
+                                    valid_right_combos_swapped.add((p, i, l))
+
+                            common_swapped_combos = valid_left_combos_swapped & valid_right_combos_swapped
+
+                            if common_swapped_combos:
+                                inside_left = inside_right = True
+
+                            
+                            results.append({
+                                "study_id": study_id,
+                                "level": disc_name,
+                                "condition": condition_left,
+                                "point_in_patch": inside_left,
+                                "point_L": L_left,
+                                "point_P": P_left,
+                                "point_I": I_left,
+                                "new_point_L": new_L_left,
+                                "new_point_P": new_P_left,
+                                "new_point_I": new_I_left,
+                                "patch_L_min": patch_slices_left[0][0],
+                                "patch_L_max": patch_slices_left[0][1],
+                                "patch_P_min": patch_slices_left[1][0],
+                                "patch_P_max": patch_slices_left[1][1],
+                                "patch_I_min": patch_slices_left[2][0],
+                                "patch_I_max": patch_slices_left[2][1]
+                            })
+
+                            results.append({
+                                "study_id": study_id,
+                                "level": disc_name,
+                                "condition": condition_right,
+                                "point_in_patch": inside_right,
+                                "point_L": L_right,
+                                "point_P": P_right,
+                                "point_I": I_right,
+                                "new_point_L": new_L_right,
+                                "new_point_P": new_P_right,
+                                "new_point_I": new_I_right,
+                                "patch_L_min": patch_slices_right[0][0],
+                                "patch_L_max": patch_slices_right[0][1],
+                                "patch_P_min": patch_slices_right[1][0],
+                                "patch_P_max": patch_slices_right[1][1],
+                                "patch_I_min": patch_slices_right[2][0],
+                                "patch_I_max": patch_slices_right[2][1]
+                            })
+
+                            # Count TP/total for each condition
+                            print(inside_left, inside_right)
+                            TP += inside_left 
+                            TP += inside_right
+                            total += 2
                         except IndexError:
                             results.append({
                                 "study_id": study_id,
@@ -360,7 +398,8 @@ def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder
     TP = 0
     total = 0
     results = []
-
+    print("axial images", axial_images)
+    print("axial segmentations", axial_segmentations)
     for img_name, seg_sag_name in zip(axial_images, axial_segmentations):
         if "patch" not in img_name:
             study_id = (img_name.split("-")[1].split("_")[0])
@@ -386,9 +425,11 @@ def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder
                 "L4/L5": disc_l4,
                 "L5/S1": disc_l5
             }
+            print(discs_dict)
 
             for disc_name, disc_mask in discs_dict.items():
                 if np.any(disc_mask):
+                    print("ioqjzd")
                     patch_img = patch_extraction_volume(vol, disc_mask, affine)
 
                     if patch_img is not None:
@@ -480,69 +521,86 @@ def extract_patches_from_discs(nii_folder, output_folder):
     sagittal_T1_images.sort()
 
     #extract_and_save_sagittal_patches(sagittal_T2_images, sagittal_T2_segmentations, nii_folder, output_folder)
-    TP_nfn,total_nfn,df_nfn = extract_and_save_sagittal_patches(sagittal_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)
+    #TP_nfn,total_nfn,df_nfn = extract_and_save_sagittal_patches(sagittal_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)
     TP_scs,total_scs,df_scs = extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder)
-    df = pd.concat([df_nfn, df_scs], ignore_index=True)
+    #df = pd.concat([df_nfn, df_scs], ignore_index=True)
+    df = df_scs 
+    TP_nfn = 0 
+    total_nfn = 1 
     return TP_nfn,total_nfn,TP_scs,total_scs, df 
 
 
-# function to extract patches from the discs in the nii folder for axial patches
+
 def patch_extraction_volume(vol, mask, affine):
     """
-    Extract a 3D patch from an MRI volume with specific real-world dimensions.
+    Extract a 3D patch from an MRI volume with specific real-world dimensions,
+    accounting for orientation and directionality.
     
     Parameters:
-    - vol: 3D numpy array representing the volume
-    - mask: 3D segmentation mask 
-    - affine: Affine matrix from the NIfTI file
-    - header: Header from the NIfTI file
+    - vol: 3D numpy array (volume)
+    - mask: 3D numpy array (segmentation mask)
+    - affine: affine matrix from the NIfTI file
     
     Returns:
-    - patch: 3D numpy array with specified real-world dimensions
+    - patch: list of [start, end] for each axis (voxel indices)
     """
-    # Convert mask to tensor for non-zero index extraction
-    mask = torch.Tensor(mask)
-    nonzero_indices = torch.nonzero(mask)
-    
-    # Calculate the centroid of the mask
-    centroid = nonzero_indices.float().mean(0).numpy().astype(int)
-    
-    # Get voxel sizes from the affine matrix
+    # Determine axis orientation
+    axcodes = nib.aff2axcodes(affine)  # e.g. ('L', 'P', 'I')
+    axmap = {dir: i for i, dir in enumerate(axcodes)}
+
+    # Map anatomical directions to axes
+    axis_rl = axmap.get('L', axmap.get('R'))
+    axis_ap = axmap.get('P', axmap.get('A'))
+    axis_si = axmap.get('I', axmap.get('S'))
+
+    # Get voxel sizes
     voxel_sizes = np.abs(np.diag(affine)[:3])
-    
-    # Calculate the number of voxels corresponding to 2.5 cm posterior displacement
+
+    # Convert mask to tensor and compute centroid
+    mask_tensor = torch.tensor(mask)
+    nonzero_indices = torch.nonzero(mask_tensor)
+    centroid = nonzero_indices.float().mean(0).numpy().astype(int)
+
+    # Posterior displacement in voxel units
     posterior_displacement_cm = 20
-    posterior_displacement_voxels = (posterior_displacement_cm / voxel_sizes[1]).astype(int)
-    
-    # Compute the new centroid with posterior displacement
-    # Assuming the third dimension (index 2) is the posterior-anterior axis
+    displacement_vox = int(posterior_displacement_cm / voxel_sizes[axis_ap])
+
+    # Adjust displacement direction depending on axis code
     displaced_centroid = centroid.copy()
-    displaced_centroid[1] -= posterior_displacement_voxels
-    
-    # Define desired patch sizes in cm
-    patch_sizes_cm = {
-        'RL': 60,  # Right-Left 
-        'AP': 40,  # Anterior-Posterior
-        'SI': 30   # Superior-Inferior
-    }
-    
-    # Calculate patch size in voxels
-    patch_sizes_voxels = np.floor(np.array([
-        patch_sizes_cm['RL'] / voxel_sizes[0],
-        patch_sizes_cm['AP'] / voxel_sizes[1], 
-        patch_sizes_cm['SI'] / voxel_sizes[2]
-    ])).astype(int)
+    ap_code = axcodes[axis_ap]  # 'P' or 'A'
 
-    # Extract patch
-    D, H, W = vol.shape
-    half_sizes = patch_sizes_voxels // 2
-    
-    patch = [[max(0, displaced_centroid[0] - half_sizes[0]),min(D, displaced_centroid[0] + half_sizes[0] + patch_sizes_voxels[0] % 2)],
-        [max(0, displaced_centroid[1] - half_sizes[1]),min(H, displaced_centroid[1] + half_sizes[1] + patch_sizes_voxels[1] % 2)],
-        [max(0, displaced_centroid[2] - half_sizes[2]),min(W, displaced_centroid[2] + half_sizes[2] + patch_sizes_voxels[2] % 2)]
-    ]
+    if ap_code == 'P':
+        displaced_centroid[axis_ap] += displacement_vox
+    elif ap_code == 'A':
+        displaced_centroid[axis_ap] -= displacement_vox
+    else:
+        raise ValueError(f"Unexpected axis code for AP axis: {ap_code}")
 
+    # Patch size in cm
+    patch_sizes_cm = {'RL': 60, 'AP': 40, 'SI': 30}
+    patch_sizes_voxels = np.floor([
+        patch_sizes_cm['RL'] / voxel_sizes[axis_rl],
+        patch_sizes_cm['AP'] / voxel_sizes[axis_ap],
+        patch_sizes_cm['SI'] / voxel_sizes[axis_si]
+    ]).astype(int)
+
+    # Map patch sizes to each voxel axis
+    axis_sizes = {axis_rl: patch_sizes_voxels[0],
+                  axis_ap: patch_sizes_voxels[1],
+                  axis_si: patch_sizes_voxels[2]}
+
+    # Compute patch bounds
+    shape = vol.shape
+    patch = []
+    for i in range(3):
+        half = axis_sizes[i] // 2
+        start = max(0, displaced_centroid[i] - half)
+        end = min(shape[i], displaced_centroid[i] + half + axis_sizes[i] % 2)
+        patch.append([start, end])
+
+    print(patch)
     return patch
+
 
 def select_best_patches(folder_path):
     discs = ['L1_L2', 'L2_L3', 'L3_L4', 'L4_L5', 'L5_S1']
@@ -599,13 +657,13 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
             TP_scs += TP_scs_temp
             total_scs += total_scs_temp
 
-            
+                
 
             all_results.append(df_subject)
 
-        """except: 
-            print(f'failed for {subject_folder}')
-        """
+        #except: 
+        #    print(f'failed for {subject_folder}')
+        
 
     # Combine all subject data and write CSV
     if all_results:
