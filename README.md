@@ -15,4 +15,4 @@ The models have the following architecture :
 
 ![Architecture du modèle](images/mil.png "Architecture du modèle MIL")
 
-Images are encoded into latent vectors, then processed iteratively through a bidirectional RNN. Finally an attention layer outputs a wieghts, allowing us to sum the vectors with thoses normalized weights, before outputing a severity prediction. 
+Images are encoded into latent vectors, then processed iteratively through a bidirectional RNN. Finally an attention layer outputs a wieghts, allowing us to sum the vectors with thoses normalized weights, before outputing a severity prediction.

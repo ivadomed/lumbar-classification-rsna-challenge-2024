@@ -68,6 +68,7 @@ def visualize_batch(batch, epoch):
 
 
 def train_model_scs(
+    encoder,
     data_dir,
     csv_file,
     num_epochs=20,
@@ -120,7 +121,7 @@ def train_model_scs(
                             shuffle=False, num_workers=4)
 
     # Initialize model
-    model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
+    model = MILmodel(encoder=encoder, num_layers=num_layers).to(device)
 
     # Loss function - CrossEntropyLoss with class weights if needed
     criterion = nn.CrossEntropyLoss(weight=weight_challenge)
@@ -228,8 +229,8 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Set paths
-    data_dir_simple = '../../duke/public/rsna_challenge/20250212nii_data_splits'
-    data_dir = '../../duke/public/rsna_challenge/20250410nii_folds'
+    data_dir = '../../duke/public/rsna_challenge/20250212nii_data_splits'
+    # data_dir = '../../duke/public/rsna_challenge/20250410nii_folds'
     csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
 
 
@@ -242,16 +243,16 @@ if __name__ == "__main__":
         convnext_small,
         data_dir=data_dir,
         csv_file=csv_file,
-        num_epochs=30,
+        num_epochs=16,
         batch_size=2,
-        learning_rate=5e-3,
-        encoder_lr=5e-4,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=5,  # Freeze le ConvNext après 3 époques
-        encoder_cosine_epochs=10,  # Le ConvNext atteint son minimum en 2 époques
-        other_cosine_epochs=6,  # Le reste du modèle atteint son minimum en 4 époques
-        eta_min_factor_encoder=0.1,  # Le lr de l'encoder descend à 4% de sa valeur initiale
-        eta_min_factor_other=0.1,  # Le lr du reste descend à 4% de sa valeur initiale
-        num_layers=1,
+        learning_rate=5e-5,
+        encoder_lr=5e-5,  # Learning rate plus faible pour le ConvNext
+        freeze_encoder_epoch=20,  # Freeze le ConvNext après 3 époques
+        encoder_cosine_epochs=16,  # Le ConvNext atteint son minimum en 2 époques
+        other_cosine_epochs=16,  # Le reste du modèle atteint son minimum en 4 époques
+        eta_min_factor_encoder=0.05,  # Le lr de l'encoder descend à 4% de sa valeur initiale
+        eta_min_factor_other=0.05,  # Le lr du reste descend à 4% de sa valeur initiale
+        num_layers=2,
         device=device,  
     )
 

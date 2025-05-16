@@ -68,6 +68,7 @@ def visualize_batch(batch, epoch):
 
 # main function to train the SAS MIL model
 def train_model_sas(
+    encoder,
     data_dir,
     csv_file,
     num_epochs=20,
@@ -143,12 +144,12 @@ def train_model_sas(
         num_workers=8
     )
 
-    severe_right, severe_left = prepare_data_sas_option(val_dir, csv_file, option=2, random=False)
+    '''severe_right, severe_left = prepare_data_sas_option(val_dir, csv_file, option=2, random=False)
     severe_loader = DataLoader(ConcatDataset([severe_right, severe_left]), batch_size=2, shuffle=False, num_workers=8)
 
     moderate_right, moderate_left = prepare_data_sas_option(val_dir, csv_file, option=1, random=False)
     moderate_loader = DataLoader(ConcatDataset([moderate_right, moderate_left]), batch_size=2, shuffle=False, num_workers=8)
-
+    '''
     # Loss functions
     unweighted_criterion = nn.CrossEntropyLoss()  # For phase 1 training and validation
     weighted_criterion = nn.CrossEntropyLoss(weight=weight_challenge)  # For phase 2 training and validation
@@ -156,16 +157,16 @@ def train_model_sas(
 
     # Initialize model
     if pretrained_model_path is not None:
-        print(f"Loading pretrained model from {pretrained_model_path}")
+        '''print(f"Loading pretrained model from {pretrained_model_path}")
         checkpoint = torch.load(pretrained_model_path)
-        model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
+        model = MILmodel(encoder=encoder, num_layers=num_layers).to(device)
         model.load_state_dict(checkpoint['model_state_dict'])
         print("Pretrained model loaded successfully")
         in_cv, in_mean_loss, in_var_loss = run_inference_on_validation_set(model, severe_loader, device, weighted_criterion)
         print(f"Initial CV for severe cases: {in_cv}, mean loss: {in_mean_loss}, var loss: {in_var_loss}")
-
+    '''
     else:
-        model = MILmodel(encoder=convnext_small, num_layers=num_layers).to(device)
+        model = MILmodel(encoder=encoder, num_layers=num_layers).to(device)
 
     # Optimizer
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
@@ -188,7 +189,6 @@ def train_model_sas(
     # Training loop
     best_val_loss = float('inf')
     best_val_weighted_loss = float('inf')
-    best_severe_loss = float('inf')
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
 
@@ -239,10 +239,10 @@ def train_model_sas(
         val_weighted_losses.append(val_weighted_loss)
 
         # Calculate coefficient of variation
-        val_severe_cv, val_severe_mean_loss, val_severe_var_loss = run_inference_on_validation_set(model, severe_loader, device, weighted_criterion)
+        '''val_severe_cv, val_severe_mean_loss, val_severe_var_loss = run_inference_on_validation_set(model, severe_loader, device, weighted_criterion)
         print(f"CV for severe cases: {val_severe_cv}, mean loss: {val_severe_mean_loss}, var loss: {val_severe_var_loss}")
         val_moderate_cv, val_moderate_mean_loss, val_moderate_var_loss = run_inference_on_validation_set(model, moderate_loader, device, weighted_criterion)
-
+        '''
 
         # Log metrics
         wandb.log({
@@ -250,78 +250,30 @@ def train_model_sas(
             "train_loss": train_loss,
             "val_loss": val_loss,
             "val_weighted_loss": val_weighted_loss,
-            "val_severe_cv": val_severe_cv,
-            "val_severe_mean_loss": val_severe_mean_loss,
-            "val_moderate_mean_loss": val_moderate_mean_loss,
             "train_acc": train_acc,
             "val_acc": val_acc,
             "lr": scheduler.get_last_lr()[0]
         })
 
-        # Save best model based on weighted validation loss
-        if save_4_wv:
-            if val_severe_mean_loss < best_severe_loss and val_loss < 0.5:
-                best_severe_loss = val_severe_mean_loss
-                best_val_weighted_loss = val_weighted_loss
-                best_val_loss = val_loss
-                best_val_acc = val_acc
-                
-                torch.save({
-                    'epoch': epoch + 1,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'initial_scheduler_state_dict': initial_scheduler.state_dict(),
-                    'fine_tune_scheduler_state_dict': fine_tune_scheduler.state_dict() if fine_tune_scheduler else None,
-                    'val_mean_loss': val_severe_mean_loss,
-                    'val_loss': val_loss,
-                    'val_weighted_loss': val_weighted_loss,
-                    'val_moderate_mean_loss': val_moderate_mean_loss,
-                    'val_acc': val_acc,
-                    'phase': 2 if epoch >= freeze_encoder_epoch else 1
-                }, os.path.join(folder_name, 'best_mil_model.pth'))
-                
-                # Save config and best loss
-                with open(os.path.join(folder_name, 'config.json'), 'w') as f:
-                    json.dump(dict(wandb.config), f)
-                with open(os.path.join(folder_name, 'best_loss.json'), 'w') as f:
-                    json.dump({
-                        'best_val_loss': best_val_loss,
-                        'best_val_weighted_loss': best_val_weighted_loss,
-                        'best_val_acc': val_acc,
-                        'val_severe_cv': val_severe_cv,
-                        'val_moderate_mean_loss': val_moderate_mean_loss,
-                        'in_cv': in_cv if pretrained_model_path is not None else None
-                    }, f)
-                
-                print(f"Saved new best model with validation loss: {val_loss:.4f} (weighted: {val_weighted_loss:.4f})")
+        # Save best model
+        if val_weighted_loss < best_val_weighted_loss:
+            best_val_weighted_loss = val_weighted_loss
+            torch.save({
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'initial_scheduler_state_dict': initial_scheduler.state_dict(),
+                'fine_tune_scheduler_state_dict': fine_tune_scheduler.state_dict() if fine_tune_scheduler else None,
+                'val_loss': val_loss,
+                'val_acc': val_acc,
+            }, os.path.join(folder_name, f"best_mil_model.pth"))
+            print(f"Saved new best model with validation loss: {val_loss:.4f}")
 
-        # else save the model with the validation not weighted loss
-        else:
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_val_weighted_loss = val_weighted_loss
-                best_val_acc = val_acc
-                torch.save({
-                    'epoch': epoch + 1,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'scheduler_state_dict': scheduler.state_dict(),
-                    'val_loss': val_loss,
-                    'val_acc': val_acc
-                }, os.path.join(folder_name, 'best_mil_model.pth'))
-                print(f"Saved new best model with validation loss: {val_loss:.4f}")
-
-                # Save config and best loss
-                with open(os.path.join(folder_name, 'config.json'), 'w') as f:
-                    json.dump(dict(wandb.config), f)
-                with open(os.path.join(folder_name, 'best_loss.json'), 'w') as f:
-                    json.dump({
-                        'best_val_loss': best_val_loss,
-                        'best_val_weighted_loss': best_val_weighted_loss,
-                        'best_val_acc': best_val_acc,
-                        'val_severe_cv': val_severe_cv, 
-                        'in_cv': in_cv if pretrained_model_path is not None else None
-                    }, f) 
+    # adds a json file in the folder with the config and the best loss
+    with open(os.path.join(folder_name, 'config.json'), 'w') as f:
+        json.dump(dict(wandb.config), f)
+    with open(os.path.join(folder_name, 'best_loss.json'), 'w') as f:
+        json.dump({'best_loss': best_val_weighted_loss}, f)
 
     wandb.finish()
     return model
@@ -333,8 +285,8 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Set paths
-    data_dir_simple = '../../duke/public/rsna_challenge/20250212nii_data_splits'
-    data_dir = '../../duke/public/rsna_challenge/20250410nii_folds'
+    data_dir = '../../duke/public/rsna_challenge/20250212nii_data_splits'
+    #data_dir = '../../duke/public/rsna_challenge/20250410nii_folds''
     csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
 
 
@@ -347,17 +299,14 @@ if __name__ == "__main__":
         convnext_small,
         data_dir=data_dir,
         csv_file=csv_file,
-        num_epochs=30,
+        num_epochs=16,
         batch_size=2,
-        learning_rate=5e-3,
-        encoder_lr=5e-4,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=5,  # Freeze le ConvNext après 3 époques
-        encoder_cosine_epochs=10,  # Le ConvNext atteint son minimum en 2 époques
-        other_cosine_epochs=6,  # Le reste du modèle atteint son minimum en 4 époques
-        eta_min_factor_encoder=0.1,  # Le lr de l'encoder descend à 4% de sa valeur initiale
-        eta_min_factor_other=0.1,  # Le lr du reste descend à 4% de sa valeur initiale
-        num_layers=1,
-        device=device,  
+        learning_rate=5e-5,  # Learning rate plus faible pour le ConvNext
+        freeze_encoder_epoch=20,  # Freeze le ConvNext après 3 époques
+        cosine_epochs=12,  # Le ConvNext atteint son minimum en 2 époques
+        eta_min_factor=0.05,  # Le lr de l'encoder descend à 4% de sa valeur initiale
+        num_layers=2,
+        device=device
     )
 
 

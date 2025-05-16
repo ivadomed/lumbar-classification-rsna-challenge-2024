@@ -137,8 +137,8 @@ def prepare_data_nfn(data_dir, csv_file, random=True):
 
     for subject in os.listdir(data_dir):
         #print(subject)
-        """if counter >40: 
-            break """
+        '''if counter >40: 
+            break'''
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
