@@ -239,20 +239,20 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                             condition_right, point_right, patch_slices_right = point_data[1]
 
                             L_left = round(float(point_left['L']), 2) -1
-                            P_left = round(float(point_left['P']), 2)
+                            P_left = round(float(point_left['P']), 2) 
                             I_left = round(float(point_left['I']), 2)
                             
-                            new_P_left = D - P_left
+                            new_P_left = D - P_left 
                             new_I_left = H - I_left
-                            new_L_left = W - L_left
+                            new_L_left = W - L_left - 1 
 
                             L_right = round(float(point_right['L']), 2) -1
                             P_right = round(float(point_right['P']), 2)
                             I_right = round(float(point_right['I']), 2)
 
-                            new_P_right = D - P_right
-                            new_I_right = H - I_right
-                            new_L_right = W - L_right
+                            new_P_right = D - P_right 
+                            new_I_right = H - I_right 
+                            new_L_right = W - L_right -1 
                             
 
                             #inside_left = is_point_in_patch(new_P_left , new_I_left , new_L_left ,  patch_slices_left ) or  is_point_in_patch( new_P_left, I_left, new_L_left, patch_slices_left) or is_point_in_patch(P_left, new_I_left, new_L_left, patch_slices_left) or is_point_in_patch( P_left , I_left , L_left , patch_slices_left ) or is_point_in_patch(new_P_left , new_I_left , L_left ,  patch_slices_left ) or   is_point_in_patch( new_P_left, I_left, L_left, patch_slices_left) or is_point_in_patch(P_left, new_I_left, L_left, patch_slices_left) or is_point_in_patch( P_left , I_left , new_L_left , patch_slices_left )
@@ -398,8 +398,7 @@ def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder
     TP = 0
     total = 0
     results = []
-    print("axial images", axial_images)
-    print("axial segmentations", axial_segmentations)
+    
     for img_name, seg_sag_name in zip(axial_images, axial_segmentations):
         if "patch" not in img_name:
             study_id = (img_name.split("-")[1].split("_")[0])
@@ -425,11 +424,11 @@ def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder
                 "L4/L5": disc_l4,
                 "L5/S1": disc_l5
             }
-            print(discs_dict)
+          
 
             for disc_name, disc_mask in discs_dict.items():
                 if np.any(disc_mask):
-                    print("ioqjzd")
+                  
                     patch_img = patch_extraction_volume(vol, disc_mask, affine)
 
                     if patch_img is not None:
@@ -521,12 +520,12 @@ def extract_patches_from_discs(nii_folder, output_folder):
     sagittal_T1_images.sort()
 
     #extract_and_save_sagittal_patches(sagittal_T2_images, sagittal_T2_segmentations, nii_folder, output_folder)
-    #TP_nfn,total_nfn,df_nfn = extract_and_save_sagittal_patches(sagittal_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)
-    TP_scs,total_scs,df_scs = extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder)
+    TP_nfn,total_nfn,df_nfn = extract_and_save_sagittal_patches(sagittal_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)
+    #TP_scs,total_scs,df_scs = extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder)
     #df = pd.concat([df_nfn, df_scs], ignore_index=True)
-    df = df_scs 
-    TP_nfn = 0 
-    total_nfn = 1 
+    df = df_nfn 
+    TP_scs = 0 
+    total_scs = 1 
     return TP_nfn,total_nfn,TP_scs,total_scs, df 
 
 
@@ -646,23 +645,23 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
     for subject_folder in os.listdir(root_dir):
         subject_path = os.path.join(root_dir, subject_folder, "anat")
         output_subject_path = os.path.join(output_root_dir, subject_folder, "anat")
-        #try : 
-        if os.path.isdir(subject_path):
-            os.makedirs(output_subject_path, exist_ok=True)
-            print(subject_folder)
-            TP_nfn_temp, total_nfn_temp, TP_scs_temp, total_scs_temp, df_subject = extract_patches_from_discs(subject_path, output_subject_path)
-            
-            TP_nfn += TP_nfn_temp
-            total_nfn += total_nfn_temp
-            TP_scs += TP_scs_temp
-            total_scs += total_scs_temp
-
+        try : 
+            if os.path.isdir(subject_path):
+                os.makedirs(output_subject_path, exist_ok=True)
+                print(subject_folder)
+                TP_nfn_temp, total_nfn_temp, TP_scs_temp, total_scs_temp, df_subject = extract_patches_from_discs(subject_path, output_subject_path)
                 
+                TP_nfn += TP_nfn_temp
+                total_nfn += total_nfn_temp
+                TP_scs += TP_scs_temp
+                total_scs += total_scs_temp
 
-            all_results.append(df_subject)
+                    
 
-        #except: 
-        #    print(f'failed for {subject_folder}')
+                all_results.append(df_subject)
+
+        except: 
+            print(f'failed for {subject_folder}')
         
 
     # Combine all subject data and write CSV
