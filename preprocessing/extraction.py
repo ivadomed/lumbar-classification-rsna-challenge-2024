@@ -1,8 +1,14 @@
-## STEP 3 ##
+"""
+This script is used to extract patches from the lumbar spine MRI dataset.
+It has to be used after niftification.py and niftification.py 
 
-# this is last part of the preprocessing pipeline
-# its goal is to extract the patches from the nii volumes based on the segmentation 
+Input: 
+    --data: Path to the root directory of the dataset.
+Output:
+    None
 
+Author: Thomas Dagonneau and Abel Salmona 
+"""
 
 import os
 import sys
@@ -13,10 +19,19 @@ from pathlib import Path
 import torchio as tio
 from scipy.ndimage import center_of_mass
 from skimage.measure import regionprops
+import argparse
 
 
-# function to calculate the com of a disk and shift it along the disk axis (for the foramina)
-# this fdunction is not really time consuming (I was worried for regionprops but it's a matter of ms)
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data", type=str, required=True, help="Path to the root directory of the dataset.")
+    args = parser.parse_args()
+    return args
+
+
+
 def get_shifted_point_along_disk(disk_mask):
     """
     Calcule un point décalé selon l'axe du disque en LPI.
@@ -268,7 +283,7 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                 if np.any(disc_mask):  # If the disc is found in the segmentation
                     # Extract the patch using the segmentation mask
                     
-                    patch_img_left, patch_img_right = patch_extraction_foraminal(vol, disc_mask, affine_ex)
+                    patch_img_right, patch_img_left = patch_extraction_foraminal(vol, disc_mask, affine_ex)
                     
                     if patch_img_left is not None or patch_img_right is not None:  # Proceed only if patch extraction was successful
 
@@ -496,18 +511,17 @@ def select_best_patches(folder_path):
                 os.remove(patch[0])
                 os.remove(patch[1])
 
-def process_all_subjects_in_directory(root_dir, output_root_dir):
+def process_all_subjects_in_directory(root_dir):
     """
     Traverses all subdirectories in the root directory corresponding to subjects,
     and applies the patch extraction function to each subdirectory.
     
     root_dir : root directory containing subject subdirectories
-    output_root_dir : root directory where output patches are stored
     """
     for subject_folder in os.listdir(root_dir):
         try :
             subject_path = os.path.join(root_dir, subject_folder, "anat")
-            output_subject_path = os.path.join(output_root_dir, subject_folder, "anat")
+            output_subject_path = os.path.join(root_dir, subject_folder, "anat")
             
             # Check if it is a subdirectory
             if os.path.isdir(subject_path):
@@ -523,14 +537,11 @@ def process_all_subjects_in_directory(root_dir, output_root_dir):
         
 
 def main():
-    # Ensure a directory argument is passed
-    if len(sys.argv) != 2:
-        print("Usage: python extraction.py [data_directory]")
-        sys.exit(1)
+
+    args = parse_arguments()    
     
     # Get the root directory from the command-line argument
-    root_dir = sys.argv[1]
-    output_dir = sys.argv[1]
+    root_dir = args.data
     
     
     
@@ -538,7 +549,7 @@ def main():
 
 
     # Run the processing function for all subjects in the specified directory
-    process_all_subjects_in_directory(root_dir, output_dir)
+    process_all_subjects_in_directory(root_dir)
 
 if __name__ == "__main__":
     main()

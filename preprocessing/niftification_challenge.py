@@ -1,3 +1,17 @@
+"""
+This script is used to niftify the scans from the lumbar spine MRI dataset. 
+It has to be used if the dataset is the one from the RSNA challenge 2024. 
+
+Input: 
+    --data: Path to the root directory of the dataset.
+    --output: Path to the output directory.
+    --csv_description: Path to the CSV file with series descriptions. 
+Output:
+    None
+
+Author: Thomas Dagonneau and Abel Salmona 
+"""
+
 import os
 import subprocess
 import dcm2niix
@@ -10,6 +24,18 @@ import torchio as tio
 import pandas as pd
 from tqdm import tqdm
 from image import Image
+import argparse
+
+
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data", type=str, required=True, help="Path to the root directory of the dataset.")
+    parser.add_argument("--output", type=str, required=True, help="Path to the output directory.")
+    parser.add_argument("--csv_description", type=str, required=True, help="Path to the CSV file with series descriptions.")
+    args = parser.parse_args()
+    return args
 
 
 
@@ -71,7 +97,7 @@ def merge_nifti_volumes(output_path, subject_id, series_uid):
 # reorient the image to a common orientation "LPI"
 def reorient(image):
 
-    """# Get image dtype from the image data (preferred over header dtype to avoid data loss)
+    # Get image dtype from the image data (preferred over header dtype to avoid data loss)
     image_data_dtype = getattr(np, np.asanyarray(image.dataobj).dtype.name)
 
     # Rescale the image to the output dtype range if necessary
@@ -97,8 +123,8 @@ def reorient(image):
     output_image.set_qform(output_image.affine)
     output_image.set_sform(output_image.affine)
 
-    return output_image"""
-    return image 
+    return output_image
+
 
 
 
@@ -191,14 +217,12 @@ def process_subject(subject_id, input_path, output_path, train, meta_obj):
 
 # Main function to run the processing
 def main():
-    # Check if everything is provided
-    if len(sys.argv) != 4:
-        print("Usage: python niftification.py [input_folder] [output_folder] [csv_description]")
-        sys.exit(1)
+    
+    args = parse_arguments()
+    input_folder = args.data
+    output_folder = args.output
+    csv_description = args.csv_description
 
-    input_folder = sys.argv[1]
-    output_folder = sys.argv[2]
-    csv_description = sys.argv[3]
     
     os.makedirs(output_folder, exist_ok=True)
 

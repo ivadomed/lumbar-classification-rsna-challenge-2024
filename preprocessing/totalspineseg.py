@@ -1,8 +1,28 @@
+"""
+This script is used to perform the segmentation of the scans using TotalSpineSeg.
+It has to be used after niftification.py and niftification.py 
+
+Input: 
+    --data: Path to the root directory of the dataset.
+Output:
+    None
+
+Author: Thomas Dagonneau and Abel Salmona 
+"""
+
 import os
 import shutil
 import sys
 import csv
+import argparse
 
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data", type=str, required=True, help="Path to the root directory of the dataset.")
+    args = parser.parse_args()
+    return args
 
 def get_batches(source_dir, batch_size=50):
     """Get a list of batches of subjects filtered by the filter_func."""
@@ -67,11 +87,10 @@ def segmentations_into_anat(output_folder, nii_folder):
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python totalspineseg.py [data_directory]")
-        sys.exit(1)
+    
+    args = parse_arguments()
+    data_directory = args.data
 
-    data_directory = sys.argv[1]
     run_totalspineseg(data_directory)
 
 
