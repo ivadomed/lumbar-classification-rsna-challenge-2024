@@ -1,0 +1,13 @@
+/totalspineseg
+/data
+/__pycache__
+/nii_folder
+/output_data
+/nii_folder_patches
+/dcom_data
+/nii_data
+train_series_descriptions.csv
+*model*
+wandb
+inference
+*__pycache__* 
