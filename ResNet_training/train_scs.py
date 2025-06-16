@@ -10,9 +10,9 @@ import pandas as pd
 import monai
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
-    ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, RandRotated,
-    Spacingd, RandSpatialCropd, RandBiasFieldd
+    ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
+    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
+    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -28,18 +28,14 @@ import numpy as np
 import nibabel as nib
 import argparse  
 from monai.data import Dataset, DataLoader
+import wandb
+import pytorch_lightning as pl
+from augment import *
+
 
 # weights of the loss
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
-# we use patches for SCS extracted with thoses values in mm
-#'RL': 60,  Right-Left 
-# 'AP': 40, Anterior-Posterior
-# 'SI': 30, Superior-Inferior
-
-# the median value for the voxel size is 0.43 mm in the axial plane
-# and 4.4 mm between axial planes (slice thickness)
-# so basically we're having a patch of size 150*100*7 for 0.4,0.4,4.4 resampling
 
 # transformation pipeline for the data
 def get_transforms(mode='basic'):
@@ -49,11 +45,10 @@ def get_transforms(mode='basic'):
     if mode == 'basic':
         common_transforms = Compose([
             LoadImaged(keys=['image']),  # Charge l'image et la segmentation
-            Spacingd(keys=['image'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
+            Spacingd(keys=['image'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
             SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
             CenterSpatialCropd(keys=['image'], roi_size=(120, 80, 6)),  # Crop pour obtenir une taille fixe
-            ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
             NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
             ToTensord(keys=['image']) 
         ])
@@ -61,15 +56,29 @@ def get_transforms(mode='basic'):
         # same but changing steps as random steps
         common_transforms = Compose([
             LoadImaged(keys=['image']),  # Charge l'image et la segmentation
-            Spacingd(keys=['image'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
             EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
-            RandRotated(keys=['image'], prob=1, range_x=0.2),
-            RandBiasFieldd(keys=['image'], prob=0.4, coeff_range=(0, 0.3)), # Random bias field
-            SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
-            RandSpatialCropd(keys=['image'], roi_size=(120, 80, 6), random_size=False),  # Crop pour obtenir une taille fixe
-            ScaleIntensityd(keys=['image']),  # Normalisation de l'intensité pour l'image
+            Spacingd(keys=['image'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
+            RandRotated(keys=['image'], prob=0.5, range_y=0.1),
+            SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)), 
+            RandSpatialCropd(keys=['image'], roi_size=(120, 80, 6), random_size=False),  
+            RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
+            RandLambdad(keys=['image'],func=aug_sin,prob=0.05,),
+            RandLambdad(keys=['image'],func=aug_exp,prob=0.05,),
+            RandLambdad(keys=['image'],func=aug_sig,prob=0.05, ),
+            RandLambdad(keys=['image'],func=aug_laplace,prob=0.05,),
+            RandLambdad(keys=['image'],func=aug_inverse,prob=0.05, ),   
+            RandBiasFieldd(keys=['image'],prob=0.05),
+            RandAffined(keys=['image'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
+
+            RandGaussianNoised(keys=['image'], mean=0.0, std=0.1, prob=0.05),
+            RandGaussianSharpend(keys=['image'], prob=0.05),   
+
+            Rand3DElasticd(keys=['image'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
+
+            ResizeWithPadOrCropd(keys=['image'], spatial_size=(120, 80, 6)),
+            RandScaleIntensityd(keys=['image'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
             NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-            ToTensord(keys=['image']) 
+            ToTensord(keys=['image'])
         ])
     
     return common_transforms
@@ -98,21 +107,19 @@ def prepare_data(data_dir, csv_file, transform):
                     disk_level = f"{parts[-3]}_{parts[-2]}"
 
                     if os.path.exists(image_path):
-                        # Vérifier la forme de l'image
-                        image_data = nib.load(image_path).get_fdata()
-                        if image_data.ndim == 3:
-                            subject_id = (subject.replace('sub-', ''))
-                            
-                            label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
-                            # Obtenir l'étiquette brute
-                            
-                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
-                            
-                            # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric = text2int.get(label, -1)
-                            if label_numeric != -1:
-                                counter += 1
-                                data.append({"image": image_path, "label": label_numeric})
+                      
+                        subject_id = (subject.replace('sub-', ''))
+                        
+                        label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
+                        # Obtenir l'étiquette brute
+                        
+                        label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                        
+                        # Convertir l'étiquette textuelle en valeur numérique
+                        label_numeric = text2int.get(label, -1)
+                        if label_numeric != -1:
+                            counter += 1
+                            data.append({"image": image_path, "label": label_numeric})
 
 
     print(f"Nombre de données chargées: {counter}")
@@ -123,20 +130,11 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     data_dir_train = os.path.join(data_dir, 'training')
     data_dir_val = os.path.join(data_dir, 'validation')
 
-    transform=get_transforms()
-    data_train = prepare_data(data_dir_train, csv_file, transform)
-    data_val = prepare_data(data_dir_val, csv_file, transform)
+    transform_basic=get_transforms()
+    transform_random=get_transforms(mode='random')
+    data_train = prepare_data(data_dir_train, csv_file, transform_random)
+    data_val = prepare_data(data_dir_val, csv_file, transform_basic)
     
-
-    # data augmentation if augment=True
-    if augment:
-        transform = get_transforms(mode='random')
-        data_train_prime = prepare_data(data_dir_train, csv_file, transform)
-        data_train_second = prepare_data(data_dir_train, csv_file, transform)
-        data_train_third = prepare_data(data_dir_train, csv_file, transform)
-
-        data_train = ConcatDataset([data_train, data_train_prime, data_train_second, data_train_third])
-
     train_loader = DataLoader(data_train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(data_val, batch_size=batch_size, shuffle=False)
     
@@ -171,7 +169,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     criterion = CrossEntropyLoss(weight=weight)
     #optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay= wd)
+    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay= wd)
 
     # Listes pour stocker la perte et l'exactitude
     train_losses = []
@@ -192,6 +190,17 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             
             inputs = batch["image"].cuda()
             labels = batch["label"].cuda()
+
+            if counter%500 == 0 : 
+                train_image= inputs[0].detach().cpu().squeeze()
+                
+
+                fig = plot_slices(image=train_image,
+                            
+                                    )
+
+                wandb.log({"training images": wandb.Image(fig)})
+                plt.close(fig)
             
             # Forward pass
             optimizer.zero_grad()
@@ -207,9 +216,13 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             _, predicted = torch.max(outputs, 1)
             correct_predictions += (predicted == labels).sum().item()
             total_predictions += labels.size(0)
+            counter +=1 
 
 
         train_losses.append(running_loss / len(train_loader))
+        wandb.log({"train_loss": train_losses[-1], "epoch": epoch})  # Log training loss
+
+
         print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
 
         # Validation
@@ -225,6 +238,17 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
                 inputs = batch["image"].cuda()
                 labels = batch["label"].cuda()
 
+                if counter%500 == 0 : 
+                    val_image= inputs[0].detach().cpu().squeeze()
+                    
+
+                    fig = plot_slices(image=val_image ,
+                                
+                                        )
+
+                    wandb.log({"val images": wandb.Image(fig)})
+                    plt.close(fig)
+
                 # Forward pass
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
@@ -233,9 +257,12 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
                 _, predicted = torch.max(outputs, 1)
                 correct_predictions += (predicted == labels).sum().item()
                 total_predictions += labels.size(0)
+                counter +=1 
 
 
         val_losses.append(val_loss / len(val_loader))
+        wandb.log({"val_loss": val_losses[-1], "epoch": epoch})  # Log validation loss
+
         print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {100 * correct_predictions / total_predictions}%")
 
         if val_losses[-1] < best_val_loss:
@@ -248,38 +275,31 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     print("Entraînement terminé.")
 
 
-   # saving a plot of the training and its results
-    plt.figure(figsize=(15, 7))
-
    
-
-    # Deuxième sous-graphe : Graphique de la perte d'entraînement et validation
-    #plt.subplot(1, 2, 2)  # 1 ligne, 2 colonnes, 2e graphique
-    plt.plot(train_losses, label='Train Loss')
-    plt.plot(val_losses, label='Validation Loss')
-    plt.title('Loss during Training')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-
-    # Ajouter les hyperparamètres sur le graphique
-    hyperparams_text = '\n'.join([f"{key}: {value}" for key, value in hyperparameters.items()])
-    plt.text(0.02, 0.98, f"Hyperparameters:\n{hyperparams_text}", 
-            transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', 
-            bbox=dict(boxstyle="round,pad=0.3", edgecolor="black", facecolor="white"))
-
-    # Ajouter la meilleure validation loss sur le graphique
-    plt.text(0.98, 0.02, f"Best Validation Loss: {best_val_loss:.4f}", 
-            transform=plt.gca().transAxes, fontsize=10, verticalalignment='bottom', 
-            horizontalalignment='right', bbox=dict(boxstyle="round,pad=0.3", edgecolor="black", facecolor="white"))
-
-
-    # Sauvegarder la figure complète avec les deux graphiques
-    plt.tight_layout()  # Pour éviter que les graphiques se chevauchent
-    plt.savefig(f'training_loss_{model_name}.png')
-    plt.close()
  
+def plot_slices(image):
+    """
+    Plot the image, ground truth and prediction of the mid-sagittal axial slice
+    The orientaion is assumed to RPI
+    """
+
+    # bring everything to numpy 
+    ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
+    image = image.float().numpy()
     
+
+    mid_axial = image.shape[2]//2
+    # plot X slices before and after the mid-sagittal slice in a grid
+    fig, axs = plt.subplots(1, 6, figsize=(18, 54))
+    fig.suptitle('Original Image')
+    for i in range(6):
+        axs[i].imshow(image[:,:,mid_axial-3+i].T, cmap='gray'); axs[i].axis('off') 
+
+
+    plt.tight_layout()
+    fig.show()
+    
+    return fig   
 
 
 # Function to parse command-line arguments
@@ -290,6 +310,22 @@ def parse_args():
     return parser.parse_args()
 
 def main():
+
+    config = None
+    output_path = "output_path"
+    wandb.init(project=f'ResNet_scs', config=config, save_code=True, dir=output_path)
+
+
+    exp_logger = pl.loggers.WandbLogger(
+                        name="test",
+                        save_dir=output_path,
+                        group="rsna-lumbar-classification",
+                        log_model=True, # save best model using checkpoint callback
+                        config=config)
+
+    # Saving training script to wandb
+    wandb.save(config)
+
     # Parse command-line arguments
     args = parse_args()
     
@@ -314,8 +350,12 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=50, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
+    wandb.finish()  
+
+
+
 
 if __name__ == "__main__":
     main()
