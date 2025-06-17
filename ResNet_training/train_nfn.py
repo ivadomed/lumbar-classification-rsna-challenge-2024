@@ -1,10 +1,21 @@
+"""
+This script is used to train a ResNet model for the RSNA lumbar classification challenge 2024 for the neural foraminal narrowing pathology.
+Author: Thomas Dagonneau and Abel Salmona
+
+Input: 
+- data: path to the training and validation data directories
+- csv_file: path to the CSV file containing dataset information
+
+Output: 
+None 
+
+"""
+
 import os
 import numpy as np
 import torch
 from tqdm import tqdm
 import pandas as pd
-import monai
-
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
@@ -30,8 +41,15 @@ import wandb
 import pytorch_lightning as pl
 from augment import *
 
-weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
+    parser.add_argument('--data', type=str, required=True, help="Directory where the data is stored.")
+    parser.add_argument('--csv_file', type=str, required=True, help="Path to the CSV file containing dataset information.")
+    return parser.parse_args()
 
+
+#Weights used in the loss for the challenge
+weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
 def get_transforms(mode='basic', side='left'):
     # Define the transform pipeline with rotation augmentation
@@ -58,19 +76,19 @@ def get_transforms(mode='basic', side='left'):
         RandRotated(keys=['T1'], prob=0.5, range_y=0.1),
         SpatialPadd(keys=['T1'], spatial_size=(6,100, 100)), 
         RandSpatialCropd(keys=['T1'], roi_size=(6,100, 100), random_size=False),  
-        RandLambdad(keys=['T1'],func=aug_sqrt,prob=0.05,),
-        RandLambdad(keys=['T1'],func=aug_sin,prob=0.05,),
-        RandLambdad(keys=['T1'],func=aug_exp,prob=0.05,),
-        RandLambdad(keys=['T1'],func=aug_sig,prob=0.05, ),
-        RandLambdad(keys=['T1'],func=aug_laplace,prob=0.05,),
-        RandLambdad(keys=['T1'],func=aug_inverse,prob=0.05, ),   
+        #RandLambdad(keys=['T1'],func=aug_sqrt,prob=0.05,),
+        #RandLambdad(keys=['T1'],func=aug_sin,prob=0.05,),
+        #RandLambdad(keys=['T1'],func=aug_exp,prob=0.05,),
+        #RandLambdad(keys=['T1'],func=aug_sig,prob=0.05, ),
+        #RandLambdad(keys=['T1'],func=aug_laplace,prob=0.05,),
+        #RandLambdad(keys=['T1'],func=aug_inverse,prob=0.05, ),   
         RandBiasFieldd(keys=['T1'],prob=0.05),
-        RandAffined(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
+        #RandAffined(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
 
         RandGaussianNoised(keys=['T1'], mean=0.0, std=0.1, prob=0.05),
         RandGaussianSharpend(keys=['T1'], prob=0.05),   
 
-        Rand3DElasticd(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
+        #Rand3DElasticd(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
 
         ResizeWithPadOrCropd(keys=['T1'], spatial_size=(6, 100, 100)),
         RandScaleIntensityd(keys=['T1'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
@@ -176,7 +194,10 @@ def plot_slices(image):
 
 
 
-def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4):
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4):
+
+    train_dir = os.path.join(data_dir, 'train')
+    val_dir = os.path.join(data_dir, 'validation')
     # Préparer les données
     
     train_transform_left=get_transforms(mode='random', side='left')
@@ -337,15 +358,16 @@ def train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=4,
     print("Entraînement terminé.")
 
 
-   
- 
-    
-
-
 
 def main():
     # Parse command-line arguments
-    #args = parse_args()
+    args = parse_args()
+
+    # Extract the data directory and CSV file path
+    data_dir = args.data_dir
+    csv_file = args.csv_file
+
+
     config = None
     output_path = "output_path"
     wandb.init(project=f'ResNet_nfn', config=config, save_code=True, dir=output_path)
@@ -361,21 +383,20 @@ def main():
     # Saving training script to wandb
     wandb.save(config)
 
-    # Extract the data directory and CSV file path
-    train_dir = "../../duke/public/rsna_challenge/20250408nii_data/training"
-    val_dir = "../../duke/public/rsna_challenge/20250408nii_data/validation"
-    csv_file = "../../duke/public/rsna_challenge/dcom_data/train.csv"
+    # Check if the data directory exists
+    if not os.path.exists(data_dir):
+        print(f"Error: The data directory '{data_dir}' does not exist.")
+        return
     
-
+    # Check if the CSV file exists
+    if not os.path.exists(csv_file):
+        print(f"Error: The CSV file '{csv_file}' does not exist.")
+        return
     
-   # Specify the GPU index (0, 1, 2, ...)
     
     device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
-    print(device)
 
-    
-
-    train_and_evaluate_model(device, train_dir, val_dir, csv_file, batch_size=2, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
 
     wandb.finish()  
 

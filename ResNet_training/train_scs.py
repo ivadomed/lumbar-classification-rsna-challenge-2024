@@ -1,7 +1,17 @@
-# this file aims to try different data processing and augmentation techniques to improve the model's performance
-# it uses the data created by extraction_with_physical_volume.py in the preprocessing-pipeline branch
+"""
+This script is used to train a ResNet model for the RSNA lumbar classification challenge 2024 for the spinal canal stenosis pathology.
+Author: Thomas Dagonneau and Abel Salmona
 
-# importations 
+Input: 
+- data: path to the training and validation data directories
+- csv_file: path to the CSV file containing dataset information
+
+Output: 
+None 
+
+"""
+
+
 import os
 import numpy as np
 import torch
@@ -32,6 +42,13 @@ import wandb
 import pytorch_lightning as pl
 from augment import *
 
+# Function to parse command-line arguments
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
+    parser.add_argument('--data_dir', type=str, required=True, help="Directory where the data is stored.")
+    parser.add_argument('--csv_file', type=str, required=True, help="Path to the CSV file containing dataset information.")
+    return parser.parse_args()
+
 
 # weights of the loss
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
@@ -61,19 +78,19 @@ def get_transforms(mode='basic'):
             RandRotated(keys=['image'], prob=0.5, range_y=0.1),
             SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)), 
             RandSpatialCropd(keys=['image'], roi_size=(120, 80, 6), random_size=False),  
-            RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
-            RandLambdad(keys=['image'],func=aug_sin,prob=0.05,),
-            RandLambdad(keys=['image'],func=aug_exp,prob=0.05,),
-            RandLambdad(keys=['image'],func=aug_sig,prob=0.05, ),
-            RandLambdad(keys=['image'],func=aug_laplace,prob=0.05,),
-            RandLambdad(keys=['image'],func=aug_inverse,prob=0.05, ),   
+            #RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
+            #RandLambdad(keys=['image'],func=aug_sin,prob=0.05,),
+            #RandLambdad(keys=['image'],func=aug_exp,prob=0.05,),
+            #RandLambdad(keys=['image'],func=aug_sig,prob=0.05, ),
+            #RandLambdad(keys=['image'],func=aug_laplace,prob=0.05,),
+            #RandLambdad(keys=['image'],func=aug_inverse,prob=0.05, ),   
             RandBiasFieldd(keys=['image'],prob=0.05),
-            RandAffined(keys=['image'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
+            #RandAffined(keys=['image'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
 
             RandGaussianNoised(keys=['image'], mean=0.0, std=0.1, prob=0.05),
             RandGaussianSharpend(keys=['image'], prob=0.05),   
 
-            Rand3DElasticd(keys=['image'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
+            #Rand3DElasticd(keys=['image'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
 
             ResizeWithPadOrCropd(keys=['image'], spatial_size=(120, 80, 6)),
             RandScaleIntensityd(keys=['image'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
@@ -178,6 +195,9 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
     # Entraînement
     for epoch in range(epochs):
+
+        counter = 0 
+        
         print(f"Epoch {epoch+1}/{epochs}")
         model.train()
         running_loss = 0.0
@@ -302,14 +322,16 @@ def plot_slices(image):
     return fig   
 
 
-# Function to parse command-line arguments
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
-    parser.add_argument('--data_dir', type=str, required=True, help="Directory where the data is stored.")
-    parser.add_argument('--csv_file', type=str, required=True, help="Path to the CSV file containing dataset information.")
-    return parser.parse_args()
 
 def main():
+
+    # Parse command-line arguments
+    args = parse_args()
+    
+    # Extract the data directory and CSV file path
+    data_dir = args.data_dir
+    csv_file = args.csv_file
+    
 
     config = None
     output_path = "output_path"
@@ -326,13 +348,7 @@ def main():
     # Saving training script to wandb
     wandb.save(config)
 
-    # Parse command-line arguments
-    args = parse_args()
-    
-    # Extract the data directory and CSV file path
-    data_dir = args.data_dir
-    csv_file = args.csv_file
-    
+  
 
     # Check if the data directory exists
     if not os.path.exists(data_dir):
@@ -353,8 +369,6 @@ def main():
     train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
     wandb.finish()  
-
-
 
 
 if __name__ == "__main__":

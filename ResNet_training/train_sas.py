@@ -1,9 +1,21 @@
+"""
+This script is used to train a ResNet model for the RSNA lumbar classification challenge 2024 for the subarticular stenosis pathology.
+Author: Thomas Dagonneau and Abel Salmona
+
+Input: 
+- data: path to the training and validation data directories
+- csv_file: path to the CSV file containing dataset information
+
+Output: 
+None 
+
+"""
+
 import os
 import numpy as np
 import torch
 from tqdm import tqdm
 import pandas as pd
-import monai
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
@@ -29,6 +41,13 @@ import wandb
 import pytorch_lightning as pl
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
+    parser.add_argument('--data', type=str, required=True, help="Directory where the data is stored.")
+    parser.add_argument('--csv_file', type=str, required=True, help="Path to the CSV file containing dataset information.")
+    return parser.parse_args()
+
+#Weights used in the loss for the challenge
 weight_challenge = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
 
@@ -47,7 +66,7 @@ def get_transforms(mode='basic', side='left'):
         Flipd(keys=['image'], spatial_axis=0)])
 
     second_transforms_basic = Compose([
-        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, -1, -1)),  # crop pour récupérer la gauche
+        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, 100, 6)),  # crop pour récupérer la gauche
         SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)),  # Padding pour atteindre une taille fixe
         CenterSpatialCropd(keys=['image'], roi_size=(60, 80, 6)),  # Crop pour obtenir une taille fixe
         NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
@@ -56,6 +75,7 @@ def get_transforms(mode='basic', side='left'):
     
     second_transforms_random = Compose([
         RandRotated(keys=['image'], prob=0.5, range_y=0.1),
+        SpatialCropd(keys=['image'], roi_start=(0, 0, 0), roi_end=(80, 100, 6)),  # crop pour récupérer la gauche
         SpatialPadd(keys=['image'], spatial_size=(60, 80, 6)), 
         RandSpatialCropd(keys=['image'], roi_size=(60, 80, 6), random_size=False),  
         RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
@@ -74,7 +94,6 @@ def get_transforms(mode='basic', side='left'):
 
         ResizeWithPadOrCropd(keys=['image'], spatial_size=(60, 80, 6)),
         RandScaleIntensityd(keys=['image'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
-        NormalizeIntensityd(keys=['image'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
         ToTensord(keys=['image'])
         ])
 
@@ -265,16 +284,16 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-5, 
                 
                 inputs = batch["image"].cuda()
                 labels = batch["label"].cuda()
-                if counter%500 == 0 : 
-                    val_image= inputs[0].detach().cpu().squeeze()
-                    
+                #if counter%500 == 0 : 
+                val_image= inputs[0].detach().cpu().squeeze()
+                
 
-                    fig = plot_slices(image=val_image ,
-                                
-                                        )
+                fig = plot_slices(image=val_image ,
+                            
+                                    )
 
-                    wandb.log({"val images": wandb.Image(fig)})
-                    plt.close(fig)
+                wandb.log({"val images": wandb.Image(fig)})
+                plt.close(fig)
 
                 # Forward pass
                 outputs = model(inputs)
@@ -336,6 +355,15 @@ def parse_args():
 
 def main():
 
+    # Parse command-line arguments
+    args = parse_args()
+    
+    # Extract the data directory and CSV file path
+    data_dir = args.data_dir
+    csv_file = args.csv_file
+    
+
+
     config = None
     output_path = "output_path"
     wandb.init(project=f'ResNet_sas', config=config, save_code=True, dir=output_path)
@@ -352,15 +380,6 @@ def main():
     wandb.save(config)
 
 
-    # Parse command-line arguments
-    args = parse_args()
-    
-    # Extract the data directory and CSV file path
-    data_dir = args.data_dir
-    csv_file = args.csv_file
-    
-
-
     # Check if the data directory exists
     if not os.path.exists(data_dir):
         print(f"Error: The data directory '{data_dir}' does not exist.")
@@ -371,10 +390,8 @@ def main():
         print(f"Error: The CSV file '{csv_file}' does not exist.")
         return
     
-    # Specify the GPU index (0, 1, 2, ...)
     device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
-    print(device)
-
+    
     train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=50, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
     wandb.finish()  
