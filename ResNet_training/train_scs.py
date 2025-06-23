@@ -45,7 +45,7 @@ from augment import *
 # Function to parse command-line arguments
 def parse_args():
     parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
-    parser.add_argument('--data_dir', type=str, required=True, help="Directory where the data is stored.")
+    parser.add_argument('--data', type=str, required=True, help="Directory where the data is stored.")
     parser.add_argument('--csv_file', type=str, required=True, help="Path to the CSV file containing dataset information.")
     return parser.parse_args()
 
@@ -78,14 +78,14 @@ def get_transforms(mode='basic'):
             RandRotated(keys=['image'], prob=0.5, range_y=0.1),
             SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)), 
             RandSpatialCropd(keys=['image'], roi_size=(120, 80, 6), random_size=False),  
-            #RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
-            #RandLambdad(keys=['image'],func=aug_sin,prob=0.05,),
-            #RandLambdad(keys=['image'],func=aug_exp,prob=0.05,),
-            #RandLambdad(keys=['image'],func=aug_sig,prob=0.05, ),
-            #RandLambdad(keys=['image'],func=aug_laplace,prob=0.05,),
-            #RandLambdad(keys=['image'],func=aug_inverse,prob=0.05, ),   
+            RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
+            RandLambdad(keys=['image'],func=aug_sin,prob=0.05,),
+            RandLambdad(keys=['image'],func=aug_exp,prob=0.05,),
+            RandLambdad(keys=['image'],func=aug_sig,prob=0.05, ),
+            RandLambdad(keys=['image'],func=aug_laplace,prob=0.05,),
+            RandLambdad(keys=['image'],func=aug_inverse,prob=0.05, ),   
             RandBiasFieldd(keys=['image'],prob=0.05),
-            #RandAffined(keys=['image'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
+            RandAffined(keys=['image'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
 
             RandGaussianNoised(keys=['image'], mean=0.0, std=0.1, prob=0.05),
             RandGaussianSharpend(keys=['image'], prob=0.05),   
@@ -329,7 +329,7 @@ def main():
     args = parse_args()
     
     # Extract the data directory and CSV file path
-    data_dir = args.data_dir
+    data_dir = args.data
     csv_file = args.csv_file
     
 

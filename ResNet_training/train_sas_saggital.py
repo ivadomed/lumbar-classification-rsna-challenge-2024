@@ -1,5 +1,5 @@
 """
-This script is used to train a ResNet model for the RSNA lumbar classification challenge 2024 for the neural foraminal narrowing pathology.
+This script is used to train a ResNet model for the RSNA lumbar classification challenge 2024 for the subarticular stenosis pathology.
 Author: Thomas Dagonneau and Abel Salmona
 
 Input: 
@@ -10,6 +10,7 @@ Output:
 None 
 
 """
+
 
 import os
 import numpy as np
@@ -55,45 +56,45 @@ def get_transforms(mode='basic', side='left'):
     # Define the transform pipeline with rotation augmentation
     
     first_transforms = [
-        LoadImaged(keys=['T1']),
-        EnsureChannelFirstd(keys=['T1']),
-        Spacingd(keys=['T1'], pixdim=(4, 0.4, 0.4), mode=('bilinear')),
-        SpatialPadd(keys=['T1'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
+        LoadImaged(keys=['T2']),
+        EnsureChannelFirstd(keys=['T2']),
+        Spacingd(keys=['T2'], pixdim=(4, 0.4, 0.4), mode=('bilinear')),
+        SpatialPadd(keys=['T2'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
     ]
 
     right_flip = [
-        Flipd(keys=['T1'], spatial_axis=0)
+        Flipd(keys=['T2'], spatial_axis=0)
         ]
 
     second_transforms_basic = [
-        CenterSpatialCropd(keys=['T1'], roi_size=(6,100, 100)),  # Adjust crop for 2D
-        ScaleIntensityd(keys=['T1']), 
-        NormalizeIntensityd(keys=['T1'], nonzero=True, channel_wise=True),
-        ToTensord(keys=['T1'])
+        CenterSpatialCropd(keys=['T2'], roi_size=(6,100, 100)),  # Adjust crop for 2D
+        ScaleIntensityd(keys=['T2']), 
+        NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),
+        ToTensord(keys=['T2'])
         ]
     
     second_transforms_random = [
-        RandRotated(keys=['T1'], prob=0.5, range_y=0.1),
-        SpatialPadd(keys=['T1'], spatial_size=(6,100, 100)), 
-        RandSpatialCropd(keys=['T1'], roi_size=(6,100, 100), random_size=False),  
-        RandLambdad(keys=['T1'],func=aug_sqrt,prob=0.05,),
-        RandLambdad(keys=['T1'],func=aug_sin,prob=0.05,),
-        RandLambdad(keys=['T1'],func=aug_exp,prob=0.05,),
-        RandLambdad(keys=['T1'],func=aug_sig,prob=0.05, ),
-        RandLambdad(keys=['T1'],func=aug_laplace,prob=0.05,),
-        RandLambdad(keys=['T1'],func=aug_inverse,prob=0.05, ),   
-        RandBiasFieldd(keys=['T1'],prob=0.05),
-        RandAffined(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
+        RandRotated(keys=['T2'], prob=0.5, range_y=0.1),
+        SpatialPadd(keys=['T2'], spatial_size=(6,100, 100)), 
+        RandSpatialCropd(keys=['T2'], roi_size=(6,100, 100), random_size=False),  
+        RandLambdad(keys=['T2'],func=aug_sqrt,prob=0.05,),
+        RandLambdad(keys=['T2'],func=aug_sin,prob=0.05,),
+        RandLambdad(keys=['T2'],func=aug_exp,prob=0.05,),
+        RandLambdad(keys=['T2'],func=aug_sig,prob=0.05, ),
+        RandLambdad(keys=['T2'],func=aug_laplace,prob=0.05,),
+        RandLambdad(keys=['T2'],func=aug_inverse,prob=0.05, ),   
+        RandBiasFieldd(keys=['T2'],prob=0.05),
+        RandAffined(keys=['T2'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
 
-        RandGaussianNoised(keys=['T1'], mean=0.0, std=0.1, prob=0.05),
-        RandGaussianSharpend(keys=['T1'], prob=0.05),   
+        RandGaussianNoised(keys=['T2'], mean=0.0, std=0.1, prob=0.05),
+        RandGaussianSharpend(keys=['T2'], prob=0.05),   
 
-        #Rand3DElasticd(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
+        #Rand3DElasticd(keys=['T2'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
 
-        ResizeWithPadOrCropd(keys=['T1'], spatial_size=(6, 100, 100)),
-        RandScaleIntensityd(keys=['T1'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
-        NormalizeIntensityd(keys=['T1'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
-        ToTensord(keys=['T1'])
+        ResizeWithPadOrCropd(keys=['T2'], spatial_size=(6, 100, 100)),
+        RandScaleIntensityd(keys=['T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
+        NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
+        ToTensord(keys=['T2'])
         ]
 
     if mode == 'basic':
@@ -131,36 +132,36 @@ def prepare_data(data_dir, csv_file):
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
-                if '_patch.nii.gz' in file and 'foramen' in file and 'T1w' in file:
-                    t1_path = os.path.join(subject_dir, file)
+                if '_patch.nii.gz' in file and 'foramen' in file and 'T2w' in file:
+                    t2_path = os.path.join(subject_dir, file)
                     
-                    parts = t1_path.split('_')
+                    parts = t2_path.split('_')
 
                     disk_level = f"{parts[-5]}_{parts[-4]}"
        
 
-                    if os.path.exists(t1_path):
+                    if os.path.exists(t2_path):
                         
                         subject_id = (subject.replace('sub-', ''))
                         if 'left' in file:
-                            label_column = f'right_neural_foraminal_narrowing_{disk_level.lower()}'
+                            label_column = f'right_subarticular_stenosis_{disk_level.lower()}'
                             label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
                             # Convertir l'étiquette textuelle en valeur numérique
                             label_numeric = text2int.get(label, -1)
                             if label_numeric != -1:
-                                
-                                data_left.append({"T1": t1_path, "label": label_numeric})
-                                counter +=1 
+
+                                data_left.append({"T2": t2_path, "label": label_numeric})
+                                counter +=1
 
 
                         if 'right' in file:
-                            label_column = f'left_neural_foraminal_narrowing_{disk_level.lower()}'
+                            label_column = f'left_subarticular_stenosis_{disk_level.lower()}'
                             label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
                             # Convertir l'étiquette textuelle en valeur numérique
                             label_numeric = text2int.get(label, -1)
                             if label_numeric != -1:
                                 
-                                data_right.append({"T1": t1_path, "label": label_numeric})
+                                data_right.append({"T2": t2_path, "label": label_numeric})
                                 counter +=1
                         
     print(counter)                                  
@@ -213,6 +214,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     val_dataset_right = Dataset(val_data_right, val_transform_right)
     val_dataset_left = Dataset(val_data_left, val_transform_left)
     val_dataset = ConcatDataset([val_dataset_left, val_dataset_right])
+    # constant key for random gen
         
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -239,7 +241,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'train_set_size': len(train_dataset),
         'val_set_size': len(val_dataset)
     }
-    model_name = f"nfn_t1_agressive_data_augmentation"
+    model_name = f"sas_agressive_data_augmentation"
 
     
     model = model.to(device)
@@ -264,7 +266,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         counter = 0 
 
         for batch in tqdm(train_loader):
-            inputs = batch["T1"].cuda()
+            inputs = batch["T2"].cuda()
             if counter%500 == 0 : 
                 train_image= inputs[0].detach().cpu().squeeze()
                 
@@ -312,7 +314,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             for batch in tqdm(val_loader):
                 
                 
-                inputs = batch["T1"].cuda()
+                inputs = batch["T2"].cuda()
                 labels = batch["label"].cuda()
 
                 if counter%500 == 0 : 
@@ -369,7 +371,7 @@ def main():
 
     config = None
     output_path = "output_path"
-    wandb.init(project=f'ResNet_nfn', config=config, save_code=True, dir=output_path)
+    wandb.init(project=f'ResNet_sas', config=config, save_code=True, dir=output_path)
 
 
     exp_logger = pl.loggers.WandbLogger(
