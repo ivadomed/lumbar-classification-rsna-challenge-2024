@@ -52,7 +52,7 @@ def parse_args():
 #Weights used in the loss for the challenge
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
-def get_transforms(mode='basic', side='left'):
+def get_transforms(mode='basic'):
     # Define the transform pipeline with rotation augmentation
     
     first_transforms = [
@@ -62,10 +62,6 @@ def get_transforms(mode='basic', side='left'):
         SpatialPadd(keys=['T2'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
     ]
 
-    right_flip = [
-        Flipd(keys=['T2'], spatial_axis=0)
-        ]
-
     second_transforms_basic = [
         CenterSpatialCropd(keys=['T2'], roi_size=(6,100, 100)),  # Adjust crop for 2D
         ScaleIntensityd(keys=['T2']), 
@@ -74,6 +70,7 @@ def get_transforms(mode='basic', side='left'):
         ]
     
     second_transforms_random = [
+        RandFlipd(keys=['T2'], prob=0.5, spatial_axis=0),
         RandRotated(keys=['T2'], prob=0.5, range_y=0.1),
         SpatialPadd(keys=['T2'], spatial_size=(6,100, 100)), 
         RandSpatialCropd(keys=['T2'], roi_size=(6,100, 100), random_size=False),  
@@ -98,17 +95,11 @@ def get_transforms(mode='basic', side='left'):
         ]
 
     if mode == 'basic':
-        if side == 'right':
-            common_transforms = Compose(first_transforms + second_transforms_basic)
-        elif side == 'left':
-            common_transforms = Compose(first_transforms + right_flip + second_transforms_basic)
-
+        common_transforms = Compose(first_transforms + second_transforms_basic)
+       
     elif mode == 'random':
-        if side == 'right':
-            common_transforms = Compose(first_transforms + second_transforms_random)
-        elif side == 'left':
-            common_transforms = Compose(first_transforms + right_flip + second_transforms_random)
-    
+        common_transforms = Compose(first_transforms + second_transforms_random)
+        
     return common_transforms
 
 
@@ -144,7 +135,7 @@ def prepare_data(data_dir, csv_file):
                         
                         subject_id = (subject.replace('sub-', ''))
                         if 'left' in file:
-                            label_column = f'left_subarticular_stenosis_{disk_level.lower()}'
+                            label_column = f'right_subarticular_stenosis_{disk_level.lower()}'
                             label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
                             # Convertir l'étiquette textuelle en valeur numérique
                             label_numeric = text2int.get(label, -1)
@@ -155,7 +146,7 @@ def prepare_data(data_dir, csv_file):
 
 
                         if 'right' in file:
-                            label_column = f'right_subarticular_stenosis_{disk_level.lower()}'
+                            label_column = f'left_subarticular_stenosis_{disk_level.lower()}'
                             label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
                             # Convertir l'étiquette textuelle en valeur numérique
                             label_numeric = text2int.get(label, -1)
@@ -200,16 +191,16 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     train_dir = os.path.join(data_dir, 'training')
     val_dir = os.path.join(data_dir, 'validation')
     # Préparer les données
-    
-    train_transform_left=get_transforms(mode='random', side='left')
-    train_transform_right=get_transforms(mode='random', side='right')
+
+    train_transform_left=get_transforms(mode='random')
+    train_transform_right=get_transforms(mode='random')
     train_data_right, train_data_left = prepare_data(train_dir, csv_file)
     train_dataset_right = Dataset(train_data_right, train_transform_right)
     train_dataset_left = Dataset(train_data_left, train_transform_left)
     train_dataset = ConcatDataset([train_dataset_left,train_dataset_right])
 
-    val_transform_left=get_transforms(mode='basic', side='left')
-    val_transform_right=get_transforms(mode='basic', side='right')
+    val_transform_left=get_transforms(mode='basic')
+    val_transform_right=get_transforms(mode='basic')
     val_data_right, val_data_left = prepare_data(val_dir, csv_file)
     val_dataset_right = Dataset(val_data_right, val_transform_right)
     val_dataset_left = Dataset(val_data_left, val_transform_left)
