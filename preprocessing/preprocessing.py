@@ -36,9 +36,9 @@ def main():
     
     os.makedirs(output_dir, exist_ok=True)
     
-    os.system(f'python niftification_challenge.py --data {input_dir} --output {output_dir} --csv_description {csv_name}')
-    os.system(f'python totalspineseg.py --data {output_dir}')
-    os.system(f'python extraction.py --data {output_dir}')
+    os.system(f'python utils/niftification_challenge.py --data {input_dir} --output {output_dir} --csv_description {csv_name}')
+    os.system(f'python utils/totalspineseg.py --data {output_dir}')
+    os.system(f'python utils/extraction.py --data {output_dir}')
 
     print("Preprocessing completed.")
 
