@@ -64,9 +64,7 @@ def get_transforms_sas(mode='basic', side = "right"):
         SpatialPadd(keys=['image'], spatial_size=(6,100, 100)),
     ])
 
-    if side == "left": 
-        regular_transforms = Compose([regular_transforms,Flipd(keys=['image'], spatial_axis=0)])
-
+    
 
     if mode == 'basic':
         common_transforms = Compose([
@@ -79,6 +77,7 @@ def get_transforms_sas(mode='basic', side = "right"):
         # Same transforms but with random augmentations
         common_transforms = Compose([
             RandRotated(keys=['image'], prob=0.5, range_y=0.1),
+            RandFlipd(keys=['image'], prob=0.5, spatial_axis=0),
             SpatialPadd(keys=['image'], spatial_size=(6,100, 100)), 
             RandSpatialCropd(keys=['image'], roi_size=(6,100, 100), random_size=False),  
             RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
@@ -130,8 +129,7 @@ def get_transforms_sas(mode='basic', side = "right"):
 # random is for training, basic for validation
 # returns a ConcatDataset of the left and right data
 def prepare_data_sas(data_dir, csv_file, random=True):
-    data_right = []
-    data_left = []
+    data = []
     labels_df = pd.read_csv(csv_file)
 
     counter = 0
@@ -172,16 +170,12 @@ def prepare_data_sas(data_dir, csv_file, random=True):
                         label_numeric = text2int.get(label, -1)
                         if label_numeric != -1:
                             counter += 1
-                            if "left" in image_path: 
-                                data_right.append({
-                                    "image": image_path,
-                                    "label": label_numeric
-                                })
-                            if "right" in image_path: 
-                                data_left.append({
-                                    "image": image_path,
-                                    "label": label_numeric
-                                })
+                            
+                            data.append({
+                                "image": image_path,
+                                "label": label_numeric
+                            })
+                            
 
     print(f"Number of loaded data: {counter}")
-    return ConcatDataset([Dataset(data=data_left, transform=get_transforms_sas(mode='random', side='left') if random else get_transforms_sas(mode='basic',side='left')), Dataset(data=data_right, transform=get_transforms_sas(mode='random', side='right') if random else get_transforms_sas(mode='basic',side='right'))]) 
+    return ConcatDataset([Dataset(data=data, transform=get_transforms_sas(mode='random') if random else get_transforms_sas(mode='basic'))]) 

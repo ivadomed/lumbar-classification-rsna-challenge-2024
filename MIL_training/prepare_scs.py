@@ -25,7 +25,7 @@ from augment import *
 
 # custom transform to extract slices from the 3D image
 # and put them in the MIL bag format 
-class ExtractSlicesD(Transform):
+class ExtractSlicesD_scs(Transform):
     def __init__(self, keys=['image'], target_size=(384, 384), verbose=False):
         self.keys = keys
         self.target_size = target_size
