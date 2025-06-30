@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader, ConcatDataset
-from training_utils import CosineAnnealingStabilizeLR, weight_challenge, train_epoch, validate
+from training_utils import CosineAnnealingStabilizeLR, weight_challenge, train_epoch, validate, visualize_batch
 import wandb
 from tqdm import tqdm
 from prepare_sas import prepare_data_sas 
@@ -18,72 +18,22 @@ import json
 import math
 import timm 
 
-# function to visualize a batch of images and save them to wandb for sas
-def visualize_batch(batch, epoch):
-    """
-    Visualize a batch of images and save them to wandb
-    batch: dictionary containing 'bag' tensor of shape [B, 6, 1, 384, 384] and 'label'
-    epoch: current epoch number
-    """
-    try:
-        # Get the first batch and ensure it's on CPU
-        images = batch['bag'].cpu().detach()  # Shape: [B, 6, 1, 384, 384]
-        labels = batch['label'].cpu().detach()
-        
-        # Take only the first 4 samples to avoid too large figures
-        n_samples = min(4, images.shape[0])
-        
-        # Create a figure with subplots for each sample and its 6 slices
-        fig, axes = plt.subplots(n_samples, 6, figsize=(20, 4*n_samples))
-        if n_samples == 1:
-            axes = axes[None, :]  # Add dimension for consistent indexing
-        
-        for i in range(n_samples):
-            for j in range(6):
-                # Get the image slice and ensure it's a valid image
-                img = images[i, j, 0].numpy()
-                
-                # Normalize the image for better visualization
-                img = (img - img.min()) / (img.max() - img.min() + 1e-8)
-                
-                # Plot the image
-                axes[i, j].imshow(img, cmap='gray')
-                axes[i, j].axis('off')
-                
-                # Add title only to the first row
-                if i == 0:
-                    axes[i, j].set_title(f'Slice {j+1}')
-            
-            # Add label information on the left
-            axes[i, 0].set_ylabel(f'Sample {i+1}\nLabel: {labels[i].item()}')
-        
-        plt.tight_layout()
-        
-        # Log to wandb
-        wandb.log({f"batch_visualization_epoch_{epoch}": wandb.Image(fig)})
-        plt.close(fig)
-    except Exception as e:
-        print(f"Warning: Could not visualize batch: {str(e)}")
-        plt.close('all')  # Ensure all figures are closed in case of error
 
-# main function to train the SAS MIL model
 def train_model_sas(
     encoder,
     data_dir,
     csv_file,
     num_epochs=20,
     batch_size=8,
-    learning_rate=6e-5,
-    freeze_encoder_epoch=6,
-    cosine_epochs=10,
-    eta_min_factor=0.04,
-    fine_tune_learning_rate=2e-5,
-    fine_tune_cosine_epochs=5,
-    fine_tune_eta_min_factor=0.1,
+    learning_rate=1e-4,
+    encoder_lr=1e-5,  # Learning rate spécifique pour le ConvNext
+    freeze_encoder_epoch=5,  # Époque à partir de laquelle on freeze le ConvNext
+    encoder_cosine_epochs=3,  # Nombre d'époques pour atteindre le minimum du cosine pour l'encoder
+    other_cosine_epochs=6,  # Nombre d'époques pour atteindre le minimum du cosine pour le reste
+    eta_min_factor_encoder=0.04,  # Facteur pour calculer eta_min de l'encoder (par rapport à encoder_lr)
+    eta_min_factor_other=0.04,  # Facteur pour calculer eta_min du reste (par rapport à learning_rate)
     num_layers=1,
     device='cuda',
-    save_4_wv=False,
-    pretrained_model_path=None
 ):
    
     # Initialize wandb
@@ -249,7 +199,7 @@ if __name__ == "__main__":
 
 
     # Train model
-    model = train_model_scs(
+    model = train_model_sas(
         convnext_small,
         data_dir=data_dir,
         csv_file=csv_file,

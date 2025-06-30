@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
-from training_utils import CosineAnnealingStabilizeLR, weight_challenge, train_epoch, validate
+from training_utils import CosineAnnealingStabilizeLR, weight_challenge, train_epoch, validate, visualize_batch
 import wandb
 from tqdm import tqdm
 from prepare_nfn import prepare_data_nfn
@@ -19,53 +19,7 @@ import timm
 
 
 
-# function to plot the first batch of each epoch on wandb
-def visualize_batch(batch, epoch):
-    """
-    Visualize a batch of images and save them to wandb
-    batch: dictionary containing 'bag' tensor of shape [B, 6, 1, 384, 384] and 'label'
-    epoch: current epoch number
-    """
-    try:
-        # Get the first batch and ensure it's on CPU
-        images = batch['bag'].cpu().detach()  # Shape: [B, 6, 1, 384, 384]
-        labels = batch['label'].cpu().detach()
-        
-        # Take only the first 4 samples to avoid too large figures
-        n_samples = min(4, images.shape[0])
-        
-        # Create a figure with subplots for each sample and its 6 slices
-        fig, axes = plt.subplots(n_samples, 6, figsize=(20, 4*n_samples))
-        if n_samples == 1:
-            axes = axes[None, :]  # Add dimension for consistent indexing
-        
-        for i in range(n_samples):
-            for j in range(6):
-                # Get the image slice and ensure it's a valid image
-                img = images[i, j, 0].numpy()
-                
-                # Normalize the image for better visualization
-                img = (img - img.min()) / (img.max() - img.min() + 1e-8)
-                
-                # Plot the image
-                axes[i, j].imshow(img, cmap='gray')
-                axes[i, j].axis('off')
-                
-                # Add title only to the first row
-                if i == 0:
-                    axes[i, j].set_title(f'Slice {j+1}')
-            
-            # Add label information on the left
-            axes[i, 0].set_ylabel(f'Sample {i+1}\nLabel: {labels[i].item()}')
-        
-        plt.tight_layout()
-        
-        # Log to wandb
-        wandb.log({f"batch_visualization_epoch_{epoch}": wandb.Image(fig)})
-        plt.close(fig)
-    except Exception as e:
-        print(f"Warning: Could not visualize batch: {str(e)}")
-        plt.close('all')  # Ensure all figures are closed in case of error
+
 
 # main function to train the NFN MIL model
 def train_model_nfn(
@@ -104,7 +58,7 @@ def train_model_nfn(
     )
 
     # create a folder with a random name in the current directory
-    folder_name = f"mil_model_nfn"
+    folder_name = f"lumbar-mil-nfn"
     os.makedirs(folder_name, exist_ok=False)
 
     # Prepare data
