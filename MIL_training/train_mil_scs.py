@@ -103,7 +103,7 @@ def train_model_scs(
     )
 
     # create a folder with a random name in the current directory
-    folder_name = f"mil_model_scs{random.randint(0, 1000000)}"
+    folder_name = f"mil_model_scs"
     os.makedirs(folder_name, exist_ok=True)
 
     # Prepare data

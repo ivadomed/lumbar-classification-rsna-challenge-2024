@@ -85,15 +85,7 @@ def train_model_sas(
     save_4_wv=False,
     pretrained_model_path=None
 ):
-    """
-    Train a single model with a two-phase approach:
-    1. Initial training with unweighted loss and single learning rate
-    2. Fine-tuning with frozen encoder and weighted loss
-    
-    Args:
-        pretrained_model_path (str, optional): Path to a pretrained model to load and fine-tune.
-            If None, a new model will be initialized.
-    """
+   
     # Initialize wandb
     wandb.init(
         project="lumbar-mil-sas",
@@ -115,20 +107,16 @@ def train_model_sas(
     )
 
     # Create a folder for the model
-    folder_name = f"mil_model_sas_{random.randint(0, 1000000)}"
+    folder_name = f"mil_model_sas"
     os.makedirs(folder_name, exist_ok=True)
 
     # Prepare data
     train_dir = os.path.join(data_dir, 'training')
     val_dir = os.path.join(data_dir, 'validation')
 
-    save_4_wv = save_4_wv
-
     # Create datasets
-    train_data_left, train_data_right = prepare_data_sas(train_dir, csv_file, random=True)
-    val_data_left, val_data_right = prepare_data_sas(val_dir, csv_file, random=False)
-    train_data = ConcatDataset([train_data_left, train_data_right])
-    val_data = ConcatDataset([val_data_left, val_data_right])
+    train_data = prepare_data_sas(train_dir, csv_file, random=True)
+    val_data = prepare_data_sas(val_dir, csv_file, random=False)
 
     # Create dataloaders
     train_loader = DataLoader(
@@ -144,126 +132,93 @@ def train_model_sas(
         num_workers=8
     )
 
-    '''severe_right, severe_left = prepare_data_sas_option(val_dir, csv_file, option=2, random=False)
-    severe_loader = DataLoader(ConcatDataset([severe_right, severe_left]), batch_size=2, shuffle=False, num_workers=8)
-
-    moderate_right, moderate_left = prepare_data_sas_option(val_dir, csv_file, option=1, random=False)
-    moderate_loader = DataLoader(ConcatDataset([moderate_right, moderate_left]), batch_size=2, shuffle=False, num_workers=8)
-    '''
-    # Loss functions
-    unweighted_criterion = nn.CrossEntropyLoss()  # For phase 1 training and validation
-    weighted_criterion = nn.CrossEntropyLoss(weight=weight_challenge)  # For phase 2 training and validation
-
-
     # Initialize model
-    if pretrained_model_path is not None:
-        '''print(f"Loading pretrained model from {pretrained_model_path}")
-        checkpoint = torch.load(pretrained_model_path)
-        model = MILmodel(encoder=encoder, num_layers=num_layers).to(device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        print("Pretrained model loaded successfully")
-        in_cv, in_mean_loss, in_var_loss = run_inference_on_validation_set(model, severe_loader, device, weighted_criterion)
-        print(f"Initial CV for severe cases: {in_cv}, mean loss: {in_mean_loss}, var loss: {in_var_loss}")
-    '''
-    else:
-        model = MILmodel(encoder=encoder, num_layers=num_layers).to(device)
+    model = MILmodel(encoder=encoder, num_layers=num_layers).to(device)
 
-    # Optimizer
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
+    # Loss function - CrossEntropyLoss with class weights if needed
+    criterion = nn.CrossEntropyLoss(weight=weight_challenge)
 
-    # Learning rate schedulers
-    initial_scheduler = CosineAnnealingStabilizeLR(
-        optimizer,
-        T_max=len(train_loader) * cosine_epochs,
-        eta_min=learning_rate * eta_min_factor,
+    # Séparer les paramètres du ConvNext et du reste du modèle
+    encoder_params = model.encoder.parameters()
+    other_params = [p for n, p in model.named_parameters() if not n.startswith('encoder')]
+
+    # Optimizer avec learning rates différents
+    optimizer = optim.AdamW([
+        {'params': encoder_params, 'lr': encoder_lr},
+        {'params': other_params, 'lr': learning_rate}
+    ], weight_decay=0.01)
+
+    # Learning rate schedulers séparés avec périodes différentes
+    encoder_scheduler = CosineAnnealingStabilizeLR(
+        optimizer,  # Pass the entire optimizer
+        T_max=len(train_loader) * encoder_cosine_epochs,  # Période spécifique pour l'encoder
+        eta_min=encoder_lr * eta_min_factor_encoder,  # Minimum learning rate pour l'encoder
+    )
+    
+    other_scheduler = CosineAnnealingStabilizeLR(
+        optimizer,  # Pass the entire optimizer
+        T_max=len(train_loader) * other_cosine_epochs,  # Période spécifique pour le reste
+        eta_min=learning_rate * eta_min_factor_other,  # Minimum learning rate pour le reste
     )
 
-    # Fine-tuning scheduler will be initialized when needed
-    fine_tune_scheduler = None
-
-    # Initialize lists to store losses for CV calculation
-    train_losses = []
-    val_losses = []
-    val_weighted_losses = []
+    # Log initial learning rates and minimum values
+    wandb.log({
+        "initial_encoder_lr": encoder_lr,
+        "initial_other_lr": learning_rate,
+        "min_encoder_lr": encoder_lr * eta_min_factor_encoder,
+        "min_other_lr": learning_rate * eta_min_factor_other,
+        "encoder_cosine_epochs": encoder_cosine_epochs,
+        "other_cosine_epochs": other_cosine_epochs,
+        "eta_min_factor_encoder": eta_min_factor_encoder,
+        "eta_min_factor_other": eta_min_factor_other
+    })
 
     # Training loop
     best_val_loss = float('inf')
-    best_val_weighted_loss = float('inf')
     for epoch in range(num_epochs):
         print(f"\nEpoch {epoch + 1}/{num_epochs}")
 
-        # Switch to phase 2 if needed
+        # Freeze le ConvNext après freeze_encoder_epoch époques
         if epoch >= freeze_encoder_epoch:
-            if fine_tune_scheduler is None:
-                # Initialize fine-tuning scheduler
-                fine_tune_scheduler = CosineAnnealingStabilizeLR(
-                    optimizer,
-                    T_max=len(train_loader) * fine_tune_cosine_epochs,
-                    eta_min=fine_tune_learning_rate * fine_tune_eta_min_factor,
-                )
-                # Set the new learning rate
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] = fine_tune_learning_rate
-                print(f"Initialized fine-tuning scheduler with learning rate {fine_tune_learning_rate}")
-            
-            # Freeze encoder
             for param in model.encoder.parameters():
                 param.requires_grad = False
-            print("ConvNext encoder frozen - Switching to weighted loss")
-            # Switch to weighted criterion for training
-            criterion = weighted_criterion
-            # Use fine-tuning scheduler
-            scheduler = fine_tune_scheduler
-        else:
-            criterion = weighted_criterion
-            scheduler = initial_scheduler
+            print("ConvNext encoder frozen")
 
         # Train
         train_loss, train_acc = train_epoch(
-            model, train_loader, criterion, optimizer,
-            (scheduler, scheduler), device,
+            model, train_loader, criterion, optimizer, 
+            (encoder_scheduler, other_scheduler), device,
             epoch=epoch
         )
 
-        # Validate with both criteria
+        # Validate
         val_loss, val_acc = validate(
-            model, val_loader, unweighted_criterion, device
+            model, val_loader, criterion, device
         )
-        val_weighted_loss, val_weighted_acc = validate(
-            model, val_loader, weighted_criterion, device
-        )
-
-        # Store losses for CV calculation
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
-        val_weighted_losses.append(val_weighted_loss)
-
-        # Calculate coefficient of variation
-        '''val_severe_cv, val_severe_mean_loss, val_severe_var_loss = run_inference_on_validation_set(model, severe_loader, device, weighted_criterion)
-        print(f"CV for severe cases: {val_severe_cv}, mean loss: {val_severe_mean_loss}, var loss: {val_severe_var_loss}")
-        val_moderate_cv, val_moderate_mean_loss, val_moderate_var_loss = run_inference_on_validation_set(model, moderate_loader, device, weighted_criterion)
-        '''
 
         # Log metrics
         wandb.log({
             "epoch": epoch + 1,
             "train_loss": train_loss,
-            "val_loss": val_loss,
-            "val_weighted_loss": val_weighted_loss,
             "train_acc": train_acc,
+            "val_loss": val_loss,
             "val_acc": val_acc,
-            "lr": scheduler.get_last_lr()[0]
+            "encoder_learning_rate": encoder_scheduler.get_last_lr()[0],
+            "other_learning_rate": other_scheduler.get_last_lr()[0],
+            "encoder_frozen": epoch >= freeze_encoder_epoch,
+            "encoder_lr_percentage": (encoder_scheduler.get_last_lr()[0] / encoder_lr) * 100,  # Pourcentage du LR initial
+            "other_lr_percentage": (other_scheduler.get_last_lr()[0] / learning_rate) * 100  # Pourcentage du LR initial
         })
 
         # Save best model
-        if val_weighted_loss < best_val_weighted_loss:
-            best_val_weighted_loss = val_weighted_loss
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'initial_scheduler_state_dict': initial_scheduler.state_dict(),
-                'fine_tune_scheduler_state_dict': fine_tune_scheduler.state_dict() if fine_tune_scheduler else None,
+                'encoder_scheduler_state_dict': encoder_scheduler.state_dict(),
+                'other_scheduler_state_dict': other_scheduler.state_dict(),
                 'val_loss': val_loss,
                 'val_acc': val_acc,
             }, os.path.join(folder_name, f"best_mil_model.pth"))
@@ -273,7 +228,7 @@ def train_model_sas(
     with open(os.path.join(folder_name, 'config.json'), 'w') as f:
         json.dump(dict(wandb.config), f)
     with open(os.path.join(folder_name, 'best_loss.json'), 'w') as f:
-        json.dump({'best_loss': best_val_weighted_loss}, f)
+        json.dump({'best_loss': best_val_loss}, f)
 
     wandb.finish()
     return model
@@ -286,7 +241,6 @@ if __name__ == "__main__":
 
     # Set paths
     data_dir = '../../duke/public/rsna_challenge/20250212nii_data_splits'
-    #data_dir = '../../duke/public/rsna_challenge/20250410nii_folds''
     csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
 
 
@@ -295,18 +249,22 @@ if __name__ == "__main__":
 
 
     # Train model
-    model = train_model_sas(
+    model = train_model_scs(
         convnext_small,
         data_dir=data_dir,
         csv_file=csv_file,
         num_epochs=16,
         batch_size=2,
-        learning_rate=5e-5,  # Learning rate plus faible pour le ConvNext
+        learning_rate=5e-5,
+        encoder_lr=5e-5,  # Learning rate plus faible pour le ConvNext
         freeze_encoder_epoch=20,  # Freeze le ConvNext après 3 époques
-        cosine_epochs=12,  # Le ConvNext atteint son minimum en 2 époques
-        eta_min_factor=0.05,  # Le lr de l'encoder descend à 4% de sa valeur initiale
+        encoder_cosine_epochs=16,  # Le ConvNext atteint son minimum en 2 époques
+        other_cosine_epochs=16,  # Le reste du modèle atteint son minimum en 4 époques
+        eta_min_factor_encoder=0.05,  # Le lr de l'encoder descend à 4% de sa valeur initiale
+        eta_min_factor_other=0.05,  # Le lr du reste descend à 4% de sa valeur initiale
         num_layers=2,
-        device=device
+        device=device,  
     )
+
 
 

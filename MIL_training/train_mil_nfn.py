@@ -69,7 +69,7 @@ def visualize_batch(batch, epoch):
 
 # main function to train the NFN MIL model
 def train_model_nfn(
-    convnext_small,
+    encoder,
     data_dir,
     csv_file,
     num_epochs=20,
@@ -104,7 +104,7 @@ def train_model_nfn(
     )
 
     # create a folder with a random name in the current directory
-    folder_name = f"mil_model_nfn{random.randint(0, 1000000)}"
+    folder_name = f"mil_model_nfn"
     os.makedirs(folder_name, exist_ok=False)
 
     # Prepare data
