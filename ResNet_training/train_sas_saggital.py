@@ -104,8 +104,8 @@ def get_transforms(mode='basic'):
 
 
 def prepare_data(data_dir, csv_file):
-    data_right = []
-    data_left = []
+    data = []
+    
     labels_df = pd.read_csv(csv_file)
     counter = 0 
 
@@ -113,11 +113,6 @@ def prepare_data(data_dir, csv_file):
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
-    
-
-        
-        """if counter//2> 15 :
-            break"""
        
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
@@ -135,28 +130,21 @@ def prepare_data(data_dir, csv_file):
                         
                         subject_id = (subject.replace('sub-', ''))
                         if 'left' in file:
-                            label_column = f'right_subarticular_stenosis_{disk_level.lower()}'
-                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
-                            # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric = text2int.get(label, -1)
-                            if label_numeric != -1:
-
-                                data_left.append({"T2": t2_path, "label": label_numeric})
-                                counter +=1
-
+                            label_column = f'left_subarticular_stenosis_{disk_level.lower()}'
 
                         if 'right' in file:
-                            label_column = f'left_subarticular_stenosis_{disk_level.lower()}'
-                            label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
-                            # Convertir l'étiquette textuelle en valeur numérique
-                            label_numeric = text2int.get(label, -1)
-                            if label_numeric != -1:
-                                
-                                data_right.append({"T2": t2_path, "label": label_numeric})
-                                counter +=1
+                            label_column = f'right_subarticular_stenosis_{disk_level.lower()}'
+                            
+                        label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                        # Convertir l'étiquette textuelle en valeur numérique
+                        label_numeric = text2int.get(label, -1)
+                        if label_numeric != -1:
+                            
+                            data.append({"T2": t2_path, "label": label_numeric})
+                            counter +=1
                         
     print(counter)                                  
-    return data_right, data_left
+    return data
     
 def plot_slices(image):
     """
@@ -192,22 +180,14 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     val_dir = os.path.join(data_dir, 'validation')
     # Préparer les données
 
-    train_transform_left=get_transforms(mode='random')
-    train_transform_right=get_transforms(mode='random')
-    train_data_right, train_data_left = prepare_data(train_dir, csv_file)
-    train_dataset_right = Dataset(train_data_right, train_transform_right)
-    train_dataset_left = Dataset(train_data_left, train_transform_left)
-    train_dataset = ConcatDataset([train_dataset_left,train_dataset_right])
+    train_transform=get_transforms(mode='random')
+    train_data = prepare_data(train_dir, csv_file)
+    train_dataset = Dataset(train_data, train_transform)
 
-    val_transform_left=get_transforms(mode='basic')
-    val_transform_right=get_transforms(mode='basic')
-    val_data_right, val_data_left = prepare_data(val_dir, csv_file)
-    val_dataset_right = Dataset(val_data_right, val_transform_right)
-    val_dataset_left = Dataset(val_data_left, val_transform_left)
-    val_dataset = ConcatDataset([val_dataset_left, val_dataset_right])
-    # constant key for random gen
+    val_transform = get_transforms(mode='basic')
+    val_data = prepare_data(val_dir, csv_file)
+    val_dataset = Dataset(val_data, val_transform)
         
-
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     
@@ -232,7 +212,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'train_set_size': len(train_dataset),
         'val_set_size': len(val_dataset)
     }
-    model_name = f"sas_agressive_data_augmentation"
+    model_name = f"sas_agressive_data_augmentation_{batch_size}"
 
     
     model = model.to(device)
@@ -388,7 +368,7 @@ def main():
     
     device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
 
     wandb.finish()  
 
