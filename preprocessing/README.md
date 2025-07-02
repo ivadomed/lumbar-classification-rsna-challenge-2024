@@ -11,7 +11,9 @@ The preprocessing is transforming the kaggle dataset into a format that we can u
 Before launching it you must follow the instructions in the general [README.md](../README.md) to install totalspineseg and other dependencies.
 
 Otherwise you must also download the data locally by following the instructions [here](https://www.kaggle.com/competitions/rsna-2024-lumbar-spine-degenerative-classification/data). 
-In short you have to run this command: `kaggle competitions download -c rsna-2024-lumbar-spine-degenerative-classification `
+In short you have to run this command: 
+
+`kaggle competitions download -c rsna-2024-lumbar-spine-degenerative-classification `
 
 ### Launching the preprocessing
 
