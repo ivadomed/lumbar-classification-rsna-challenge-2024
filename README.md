@@ -1,5 +1,6 @@
 # Team Neuropoly: RSNA 2024 Lumbar Spine Degenerative Classification Challenge
 
+
 This branch defines a **3 step preprocessing** pipeline used to preprocess data from this Kaggle [Challenge](https://www.kaggle.com/code/abhinavsuri/anatomy-image-visualization-overview-rsna-raids)
 
 # Requirements 
