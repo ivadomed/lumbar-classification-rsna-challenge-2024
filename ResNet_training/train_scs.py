@@ -130,7 +130,7 @@ def prepare_data(data_dir, csv_file, transform):
                         label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
                         # Obtenir l'étiquette brute
                         
-                        label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                        label = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column].values[0]
                         
                         # Convertir l'étiquette textuelle en valeur numérique
                         label_numeric = text2int.get(label, -1)

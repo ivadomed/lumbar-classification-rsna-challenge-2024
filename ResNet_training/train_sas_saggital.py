@@ -135,7 +135,7 @@ def prepare_data(data_dir, csv_file):
                         if 'right' in file:
                             label_column = f'right_subarticular_stenosis_{disk_level.lower()}'
                             
-                        label = labels_df.loc[labels_df['study_id'] == subject_id, label_column].values[0]
+                        label = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column].values[0]
                         # Convertir l'étiquette textuelle en valeur numérique
                         label_numeric = text2int.get(label, -1)
                         if label_numeric != -1:

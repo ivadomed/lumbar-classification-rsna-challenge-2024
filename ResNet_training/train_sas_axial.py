@@ -125,8 +125,7 @@ def prepare_data(data_dir, csv_file, transform_left, transform_right):
     for subject in os.listdir(data_dir):
         print(subject)
         subject_dir = os.path.join(data_dir, subject, 'anat')
-        #if counter>10:
-        #    break
+        
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
@@ -145,8 +144,8 @@ def prepare_data(data_dir, csv_file, transform_left, transform_right):
                         label_column_sasr = f'right_subarticular_stenosis_{disk_level.lower()}'
                         # Obtenir l'étiquette brute
 
-                        label_sasr = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasl].values[0]
-                        label_sasl = labels_df.loc[labels_df['study_id'] == subject_id, label_column_sasr].values[0]
+                        label_sasr = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column_sasl].values[0]
+                        label_sasl = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column_sasr].values[0]
                         
                         # Convertir l'étiquette textuelle en valeur numérique
                         label_numeric_sasr = text2int.get(label_sasr, -1)
