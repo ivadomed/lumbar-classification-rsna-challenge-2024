@@ -36,11 +36,11 @@ import numpy as np
 import nibabel as nib
 import argparse  
 import torchio as tio
-from image import Image
+from utils.image import Image
 import torch.nn as nn
 import wandb
 import pytorch_lightning as pl
-from augment import *
+from utils.augment import *
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")

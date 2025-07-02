@@ -40,7 +40,7 @@ import argparse
 from monai.data import Dataset, DataLoader
 import wandb
 import pytorch_lightning as pl
-from augment import *
+from utils.augment import *
 
 # Function to parse command-line arguments
 def parse_args():

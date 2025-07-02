@@ -36,7 +36,7 @@ import seaborn as sns
 import numpy as np
 import nibabel as nib
 import argparse  
-from augment import *
+from utils.augment import *
 import wandb 
 import pytorch_lightning as pl
 
