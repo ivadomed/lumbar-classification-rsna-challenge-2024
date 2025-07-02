@@ -2,5 +2,5 @@
 
 ## Preprocessing 
 
-:warning This section is only working with the RSNA data. If you want to apply this on your own dataset you need to modify the preprocessing pipeline. 
+:warning: This section is only working with the RSNA data. If you want to apply this on your own dataset you need to modify the preprocessing pipeline. 
 

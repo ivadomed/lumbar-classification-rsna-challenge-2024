@@ -11,6 +11,7 @@ Once the preprocessing has been applied you can train the models using the three
 - `train_scs.py`
 
 To do so the command is the same for the three models: 
+
 `python train_MODEL.py --data PATH_TO_THE_PREPROCESSED_DATA --csv_file PATH_TO_THE_TRAIN.CSV_FILE`
 
 You can modify the hyperparameters in the python files directly. Otherwise we put by default the one that worked best according to our experiments. 
