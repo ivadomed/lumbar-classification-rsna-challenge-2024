@@ -1,2 +1,3 @@
 monai 
-nibabel 
+nibabel
+dcm2niix
