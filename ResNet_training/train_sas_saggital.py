@@ -71,7 +71,7 @@ def get_transforms(mode='basic'):
     
     second_transforms_random = [
         RandFlipd(keys=['T2'], prob=0.5, spatial_axis=0),
-        RandRotated(keys=['T2'], prob=0.5, range_y=0.1),
+        RandRotated(keys=['T2'], prob=0.5, range_x=0.1),
         SpatialPadd(keys=['T2'], spatial_size=(6,100, 100)), 
         RandSpatialCropd(keys=['T2'], roi_size=(6,100, 100), random_size=False),  
         RandLambdad(keys=['T2'],func=aug_sqrt,prob=0.05,),
@@ -368,7 +368,7 @@ def main():
     
     device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
 
     wandb.finish()  
 
