@@ -20,7 +20,7 @@ import timm
 
 # main function to train the NFN MIL model
 def train_model_nfn(
-    convnext_small,
+    encoder,
     data_dir,
     csv_file,
     num_epochs=20,

@@ -7,15 +7,10 @@ Also encoder could be changed to a different model
 
 import torch
 import torch.nn as nn
-
-# import timm for models
 import timm
 
 
-# define a MIL section, which is a RNN followed by an attention mechanism
-# data bag goes in the RNN and then for each instance, we apply a common attention layer
-# this layer gives a weight, weights are then normalized to allow us to compute
-# a final weighted sum of the instances from the bag 
+
 class MILsection(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_classes, num_layers=1):
         super(MILsection, self).__init__()
@@ -53,9 +48,6 @@ class MILsection(nn.Module):
         return weighted_instances
 
 
-# here define the whole MIL model
-# uses the MILsection model and a ConvNext Small as a feature extractor
-# note that loads of hyperparameters could be included as arguments
 class MILmodel(nn.Module):
     # attention, a new encoder instance has to be created at each MIL creation
     # if not, the same encoder could be used for all MIL sections
