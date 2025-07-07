@@ -62,7 +62,6 @@ def get_transforms_scs(mode='basic'):
         LoadImaged(keys=['image']),
         EnsureChannelFirstd(keys=["image"]),
         Spacingd(keys=['image'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
-        SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
         
     ])
     
@@ -70,6 +69,7 @@ def get_transforms_scs(mode='basic'):
     if mode == 'basic':
         common_transforms = Compose([
             CenterSpatialCropd(keys=['image'],roi_size=(120, 80, 6)),
+            SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
             ScaleIntensityd(keys=['image']),
             NormalizeIntensityd(keys=['image'],nonzero=True),
         ])
@@ -78,7 +78,6 @@ def get_transforms_scs(mode='basic'):
         # Same transforms but with random augmentations
         common_transforms = Compose([
             RandRotated(keys=['image'], prob=0.5, range_y=0.1),
-            SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)), 
             RandSpatialCropd(keys=['image'], roi_size=(120, 80, 6), random_size=False),  
             RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
             RandLambdad(keys=['image'],func=aug_sin,prob=0.05,),
@@ -101,7 +100,7 @@ def get_transforms_scs(mode='basic'):
     # Create list of transforms for processing 2D slices
     slice_transforms = Compose([
         # Custom transform to extract and resize slices
-        ExtractSlicesD(keys=['image'], target_size=(384, 384)),
+        ExtractSlicesD_scs(keys=['image'], target_size=(384, 384)),
         
         # Ensure all slices are tensors
         ToTensord(
