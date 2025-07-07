@@ -97,7 +97,7 @@ def get_transforms_sas(mode='basic'):
     # Create list of transforms for processing 2D slices
     slice_transforms = Compose([
         # Custom transform to extract and resize slices
-        ExtractSlicesD_nfn(keys=['image'], target_size=(100, 100)),
+        ExtractSlicesD_sas(keys=['image'], target_size=(100, 100)),
         # Ensure all slices are tensors
         ToTensord(
             keys=[f'slice_{i}' for i in range(6)]

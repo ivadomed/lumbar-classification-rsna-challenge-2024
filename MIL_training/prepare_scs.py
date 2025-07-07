@@ -155,7 +155,7 @@ def prepare_data_scs(data_dir, csv_file, random=True):
                         )
                         # Get raw label
                         label = labels_df.loc[
-                            labels_df['study_id'] == subject_id,
+                            labels_df['study_id'] == int(subject_id),
                             label_column
                         ].values[0]
 

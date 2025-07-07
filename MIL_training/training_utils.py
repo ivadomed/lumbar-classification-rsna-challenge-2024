@@ -78,71 +78,60 @@ def visualize_batch(batch, epoch):
         plt.close('all')  # Ensure all figures are closed in case of error
 
 
-# Function to train the model for one epoch
 def train_epoch(
     model,
     train_loader,
     criterion,
-    optimizer,
-    schedulers,
+    optimizers,          # Tuple: (encoder_optimizer, other_optimizer)
+    schedulers,          # Tuple: (encoder_scheduler, other_scheduler)
     device,
-    epoch=None  # Add epoch parameter
+    epoch=None
 ):
     model.train()
     running_loss = 0.0
     correct = 0
     total = 0
 
+    encoder_optimizer, other_optimizer = optimizers
     encoder_scheduler, other_scheduler = schedulers
 
     pbar = tqdm(train_loader, desc='Training')
     for i, batch in enumerate(pbar):
-        # Get data
-        bags = batch['bag'].to(device)  # Shape: [B, 6, 1, 384, 384]
-        labels = batch['label'].to(device)  # Shape: [B]
+        bags = batch['bag'].to(device)
+        labels = batch['label'].to(device)
 
-        # Visualize first batch of each epoch (after moving to device)
         if i == 0 and epoch is not None:
-            visualize_batch(batch, epoch)
-            
-        # Zero gradients
-        optimizer.zero_grad()
+            visualize_batch({k: v.cpu() for k, v in batch.items()}, epoch)
 
-        # Forward pass
+        encoder_optimizer.zero_grad()
+        other_optimizer.zero_grad()
+
         main_output = model(bags)
-
-        # Calculate losses
         loss = criterion(main_output, labels)
 
-        # Backward pass
         loss.backward()
-        optimizer.step()
 
-        # Update learning rates
-        encoder_scheduler.step()
-        other_scheduler.step()
+        encoder_optimizer.step()
+        other_optimizer.step()
 
-        # Calculate accuracy
         _, predicted = torch.max(main_output, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
-
-        # Update statistics
         running_loss += loss.item()
 
-        # Update progress bar with learning rates
         pbar.set_postfix({
             'loss': f'{loss.item():.4f}',
-            'acc': f'{100 * correct / total:.2f}%',
-            'enc_lr': f'{encoder_scheduler.get_last_lr()[0]:.2e}',
-            'oth_lr': f'{other_scheduler.get_last_lr()[0]:.2e}'
+            'acc': f'{100 * correct / total:.2f}%'
         })
 
-    # Calculate epoch statistics
+    encoder_scheduler.step()
+    other_scheduler.step()
+
     epoch_loss = running_loss / len(train_loader)
     acc = 100 * correct / total
 
     return epoch_loss, acc
+
 
 
 # Function to validate the model

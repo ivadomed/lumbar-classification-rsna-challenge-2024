@@ -103,7 +103,7 @@ def train_model_scs(
     )
 
     # create a folder with a random name in the current directory
-    folder_name = f"mil_model_scs{random.randint(0, 1000000)}"
+    folder_name = f"../model/mil_model_scs"
     os.makedirs(folder_name, exist_ok=True)
 
     # Prepare data
@@ -229,9 +229,8 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Set paths
-    data_dir = '../../duke/public/rsna_challenge/20250212nii_data_splits'
-    # data_dir = '../../duke/public/rsna_challenge/20250410nii_folds'
-    csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
+    data_dir = '../../rsna_challenge_data_split'
+    csv_file = '../../train.csv'
 
 
     convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',
@@ -247,7 +246,7 @@ if __name__ == "__main__":
         batch_size=2,
         learning_rate=5e-5,
         encoder_lr=5e-5,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=20,  # Freeze le ConvNext après 3 époques
+        freeze_encoder_epoch=4,  # Freeze le ConvNext après 3 époques
         encoder_cosine_epochs=16,  # Le ConvNext atteint son minimum en 2 époques
         other_cosine_epochs=16,  # Le reste du modèle atteint son minimum en 4 époques
         eta_min_factor_encoder=0.05,  # Le lr de l'encoder descend à 4% de sa valeur initiale

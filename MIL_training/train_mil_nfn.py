@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
-from training_utils import CosineAnnealingStabilizeLR, weight_challenge, train_epoch, validate
+from training_utils import CosineAnnealingStabilizeLR, weight_challenge, train_epoch, validate, visualize_batch 
 import wandb
 from tqdm import tqdm
 from prepare_nfn import prepare_data_nfn
@@ -17,55 +17,6 @@ import json
 import math
 import timm
 
-
-
-# function to plot the first batch of each epoch on wandb
-def visualize_batch(batch, epoch):
-    """
-    Visualize a batch of images and save them to wandb
-    batch: dictionary containing 'bag' tensor of shape [B, 6, 1, 384, 384] and 'label'
-    epoch: current epoch number
-    """
-    try:
-        # Get the first batch and ensure it's on CPU
-        images = batch['bag'].cpu().detach()  # Shape: [B, 6, 1, 384, 384]
-        labels = batch['label'].cpu().detach()
-        
-        # Take only the first 4 samples to avoid too large figures
-        n_samples = min(4, images.shape[0])
-        
-        # Create a figure with subplots for each sample and its 6 slices
-        fig, axes = plt.subplots(n_samples, 6, figsize=(20, 4*n_samples))
-        if n_samples == 1:
-            axes = axes[None, :]  # Add dimension for consistent indexing
-        
-        for i in range(n_samples):
-            for j in range(6):
-                # Get the image slice and ensure it's a valid image
-                img = images[i, j, 0].numpy()
-                
-                # Normalize the image for better visualization
-                img = (img - img.min()) / (img.max() - img.min() + 1e-8)
-                
-                # Plot the image
-                axes[i, j].imshow(img, cmap='gray')
-                axes[i, j].axis('off')
-                
-                # Add title only to the first row
-                if i == 0:
-                    axes[i, j].set_title(f'Slice {j+1}')
-            
-            # Add label information on the left
-            axes[i, 0].set_ylabel(f'Sample {i+1}\nLabel: {labels[i].item()}')
-        
-        plt.tight_layout()
-        
-        # Log to wandb
-        wandb.log({f"batch_visualization_epoch_{epoch}": wandb.Image(fig)})
-        plt.close(fig)
-    except Exception as e:
-        print(f"Warning: Could not visualize batch: {str(e)}")
-        plt.close('all')  # Ensure all figures are closed in case of error
 
 # main function to train the NFN MIL model
 def train_model_nfn(
@@ -104,8 +55,8 @@ def train_model_nfn(
     )
 
     # create a folder with a random name in the current directory
-    folder_name = f"mil_model_nfn{random.randint(0, 1000000)}"
-    os.makedirs(folder_name, exist_ok=False)
+    folder_name = f"mil_model_nfn"
+    os.makedirs(folder_name, exist_ok=True)
 
     # Prepare data
     train_dir = os.path.join(data_dir, 'training')
@@ -133,23 +84,16 @@ def train_model_nfn(
     encoder_params = model.encoder.parameters()
     other_params = [p for n, p in model.named_parameters() if not n.startswith('encoder')]
 
-    # Optimizer avec learning rates différents
-    optimizer = optim.AdamW([
-        {'params': encoder_params, 'lr': encoder_lr},
-        {'params': other_params, 'lr': learning_rate}
-    ], weight_decay=0.01)
+    encoder_optimizer = optim.AdamW(encoder_params, lr=encoder_lr, weight_decay=0.01)
+    other_optimizer = optim.AdamW(other_params, lr=learning_rate, weight_decay=0.01)
 
-    # Learning rate schedulers séparés avec périodes différentes
-    encoder_scheduler = CosineAnnealingStabilizeLR(
-        optimizer,  # Pass the entire optimizer
+    encoder_scheduler = CosineAnnealingStabilizeLR(encoder_optimizer,  # Pass the entire optimizer
         T_max=len(train_loader) * encoder_cosine_epochs,  # Période spécifique pour l'encoder
         eta_min=encoder_lr * eta_min_factor_encoder  # Minimum learning rate pour l'encoder
     )
-    
-    other_scheduler = CosineAnnealingStabilizeLR(
-        optimizer,  # Pass the entire optimizer
-        T_max=len(train_loader) * other_cosine_epochs,  # Période spécifique pour le reste
-        eta_min=learning_rate * eta_min_factor_other  # Minimum learning rate pour le reste
+    other_scheduler = CosineAnnealingStabilizeLR(other_optimizer,  # Pass the entire optimizer
+        T_max=len(train_loader) * encoder_cosine_epochs,  # Période spécifique pour l'encoder
+        eta_min=encoder_lr * eta_min_factor_encoder  # Minimum learning rate pour l'encoder
     )
 
     # Log initial learning rates and minimum values
@@ -179,7 +123,8 @@ def train_model_nfn(
 
         # Train
         train_loss, train_acc = train_epoch(
-            model, train_loader, criterion, optimizer, 
+            model, train_loader, criterion, 
+            (encoder_optimizer, other_optimizer), 
             (encoder_scheduler, other_scheduler), device,
             epoch=epoch
         )
@@ -209,7 +154,7 @@ def train_model_nfn(
             torch.save({
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
+                'optimizer_state_dict': other_optimizer.state_dict(),
                 'encoder_scheduler_state_dict': encoder_scheduler.state_dict(),
                 'other_scheduler_state_dict': other_scheduler.state_dict(),
                 'val_loss': val_loss,
@@ -233,8 +178,8 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Set paths
-    data_dir = '../../duke/public/rsna_challenge/20250408nii_data'
-    csv_file = '../../duke/public/rsna_challenge/dcom_data/train.csv'
+    data_dir = '../../rsna_challenge_data_split'
+    csv_file = '../../train.csv'
 
     convnext_small = timm.create_model('convnext_small.fb_in22k_ft_in1k_384',
                                    in_chans=1, pretrained=True, num_classes=0)
@@ -249,7 +194,7 @@ if __name__ == "__main__":
         batch_size=2,
         learning_rate=0.00005,
         encoder_lr=0.00005,  # Learning rate plus faible pour le ConvNext
-        freeze_encoder_epoch=20,  # Freeze le ConvNext après 3 époques
+        freeze_encoder_epoch=4,  # Freeze le ConvNext après 3 époques
         encoder_cosine_epochs=12,  # Le ConvNext atteint son minimum en 2 époques
         other_cosine_epochs=12,  # Le reste du modèle atteint son minimum en 4 époques
         eta_min_factor_encoder=0.05,  # Le lr de l'encoder descend à 4% de sa valeur initiale
