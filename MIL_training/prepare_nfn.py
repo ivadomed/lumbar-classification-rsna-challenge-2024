@@ -11,7 +11,7 @@ from monai.transforms import (
     RandRotated, RandSpatialCropd, RandBiasFieldd, Lambdad, Transform,
     RandGaussianNoised, RandAffined, RandZoomd, Rand3DElasticd, Flipd,
     SpatialCropd, Spacingd, RandLambdad, ResizeWithPadOrCropd,
-    RandGaussianSharpend, CenterSpatialCropd, RandScaleIntensityd
+    RandGaussianSharpend, CenterSpatialCropd, RandScaleIntensityd, RandFlipd
 )
 
 from torch.utils.data import DataLoader, ConcatDataset
@@ -56,31 +56,26 @@ class ExtractSlicesD_nfn(Transform):
 
 
 # whole transforms for dataloading 
-def get_transforms_nfn(mode='basic', side = "right"):
+def get_transforms_nfn(mode='basic'):
 
     regular_transforms = Compose([
         LoadImaged(keys=['image']),
         EnsureChannelFirstd(keys=["image"]),
         Spacingd(keys=['image'], pixdim=(4.0, 0.4, 0.4), mode=('bilinear')),
-        SpatialPadd(keys=['image'], spatial_size=(6,100, 100)),
     ])
-
-    if side == "left": 
-        regular_transforms = Compose([regular_transforms,Flipd(keys=['image'], spatial_axis=0)])
-
 
     if mode == 'basic':
         common_transforms = Compose([
             CenterSpatialCropd(keys=['image'],roi_size=(6, 100, 100)),
-            ScaleIntensityd(keys=['image']),
+            ResizeWithPadOrCropd(keys=['image'], spatial_size=(6, 100, 100)),
             NormalizeIntensityd(keys=['image'],nonzero=True),
         ])
 
     elif mode == 'random': # for training !
         # Same transforms but with random augmentations
         common_transforms = Compose([
-            RandRotated(keys=['image'], prob=0.5, range_y=0.1),
-            SpatialPadd(keys=['image'], spatial_size=(6,100, 100)), 
+            RandRotated(keys=['image'], prob=0.5, range_x=0.1),
+            RandFlipd(keys=['image'], prob=0.5, spatial_axis=0),
             RandSpatialCropd(keys=['image'], roi_size=(6,100, 100), random_size=False),  
             RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
             RandLambdad(keys=['image'],func=aug_sin,prob=0.05,),
@@ -103,7 +98,7 @@ def get_transforms_nfn(mode='basic', side = "right"):
     # Create list of transforms for processing 2D slices
     slice_transforms = Compose([
         # Custom transform to extract and resize slices
-        ExtractSlicesD_nfn(keys=['image'], target_size=(224, 224)),
+        ExtractSlicesD_nfn(keys=['image'], target_size=(100, 100)),
         # Ensure all slices are tensors
         ToTensord(
             keys=[f'slice_{i}' for i in range(6)]
@@ -117,7 +112,7 @@ def get_transforms_nfn(mode='basic', side = "right"):
         # Add a transform to ensure bag has the correct shape
         Lambdad(
             keys=['bag'],
-            func=lambda x: x.reshape(6, 1, 224, 224)
+            func=lambda x: x.reshape(6, 1, 100, 100)
         )
     ])
 
@@ -130,8 +125,8 @@ def get_transforms_nfn(mode='basic', side = "right"):
 # random is for training, basic for validation
 # returns a ConcatDataset of the left and right data
 def prepare_data_nfn(data_dir, csv_file, random=True):
-    data_right = []
-    data_left = []
+    data = []
+    
     labels_df = pd.read_csv(csv_file)
 
     counter = 0
@@ -154,17 +149,17 @@ def prepare_data_nfn(data_dir, csv_file, random=True):
                         
                         subject_id = (subject.replace('sub-', ''))
                         if 'left' in file:
-                            orientation = 'right'
-                        elif 'right' in file: 
                             orientation = 'left'
+                        elif 'right' in file: 
+                            orientation = 'right'
                         label_column = (
                             f'{orientation}_neural_foraminal_narrowing_{disk_level.lower()}'
                         )
-                        print(file)
-                        print(label_column )
+                        
+                        
                         # Get raw label
                         label = labels_df.loc[
-                            labels_df['study_id'] == subject_id,
+                            labels_df['study_id'] == int(subject_id),
                             label_column
                         ].values[0]
 
@@ -172,17 +167,13 @@ def prepare_data_nfn(data_dir, csv_file, random=True):
                         label_numeric = text2int.get(label, -1)
                         if label_numeric != -1:
                             counter += 1
-                            if "left" in image_path: 
-                                data_right.append({
-                                    "image": image_path,
-                                    "label": label_numeric
-                                })
-                            if "right" in image_path: 
-                                data_left.append({
-                                    "image": image_path,
-                                    "label": label_numeric
-                                })
+                            
+                            data.append({
+                                "image": image_path,
+                                "label": label_numeric
+                            })
+                            
 
     print(f"Number of loaded data: {counter}")
-    return ConcatDataset([Dataset(data=data_left, transform=get_transforms_nfn(mode='random', side='left') if random else get_transforms_nfn(mode='basic',side='left')), Dataset(data=data_right, transform=get_transforms_nfn(mode='random', side='right') if random else get_transforms_nfn(mode='basic',side='right'))]) 
+    return Dataset(data=data, transform=get_transforms_nfn(mode='random') if random else get_transforms_nfn(mode='basic'))
 
