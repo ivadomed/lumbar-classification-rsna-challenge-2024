@@ -191,9 +191,9 @@ if __name__ == "__main__":
         data_dir=data_dir,
         csv_file=csv_file,
         num_epochs=16,
-        batch_size=2,
-        learning_rate=0.00005,
-        encoder_lr=0.00005,  # Learning rate plus faible pour le ConvNext
+        batch_size=4,
+        learning_rate=1e-4,
+        encoder_lr=5e-5,  # Learning rate plus faible pour le ConvNext
         freeze_encoder_epoch=4,  # Freeze le ConvNext après 3 époques
         encoder_cosine_epochs=12,  # Le ConvNext atteint son minimum en 2 époques
         other_cosine_epochs=12,  # Le reste du modèle atteint son minimum en 4 époques
