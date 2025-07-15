@@ -75,7 +75,7 @@ def get_transforms(mode='basic'):
             LoadImaged(keys=['image']),  # Charge l'image et la segmentation
             EnsureChannelFirstd(keys=["image"]),  # S'assure que l'image et la segmentation ont la dimension de canal en premier
             Spacingd(keys=['image'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
-            RandRotated(keys=['image'], prob=0.5, range_y=0.1),
+            RandRotated(keys=['image'], prob=0.5, range_z=0.1),
             SpatialPadd(keys=['image'], spatial_size=(120, 80, 6)), 
             RandSpatialCropd(keys=['image'], roi_size=(120, 80, 6), random_size=False),  
             RandLambdad(keys=['image'],func=aug_sqrt,prob=0.05,),
@@ -178,13 +178,12 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'val_set_size': len(data_val),
         'randbiaisfield prob and coeff': (0.4, 0.3)
     }
-    model_name = f"scs_model_layers_{layers}_epochs_{epochs}_lr_{lr}_augmentation_{augment}_wd_{wd}_3times"
+    model_name = f"scs_agressive_data_augmentation"
 
     
     model = model.to(device)
     
     criterion = CrossEntropyLoss(weight=weight)
-    #optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
 
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay= wd)
 
@@ -290,7 +289,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             best_val_loss = val_losses[-1]
             
             # Sauvegarde du modèle
-            torch.save(model.state_dict(), f"{model_name}.pth")
+            torch.save(model.state_dict(), f"model/{model_name}.pth")
 
     print("Entraînement terminé.")
 
@@ -366,7 +365,7 @@ def main():
 
     
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=8, lr=5e-5, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=5e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
    
     wandb.finish()  
 

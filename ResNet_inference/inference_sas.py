@@ -75,6 +75,8 @@ def prepare_data(data_dir, csv_file):
     
     for subject in os.listdir(data_dir):
        
+        
+
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
@@ -108,7 +110,7 @@ def prepare_data(data_dir, csv_file):
     return data
 
 
-def inference_and_evaluate(device, data_dir, csv_file, model_path, batch_size=4, layers=[3, 4, 6, 3]):
+def inference_and_evaluate(device, data_dir, csv_file, model_path, batch_size=16, layers=[3, 4, 6, 3]):
     val_dir = os.path.join(data_dir, 'validation')
 
     # Prepare validation dataset
@@ -135,12 +137,18 @@ def inference_and_evaluate(device, data_dir, csv_file, model_path, batch_size=4,
     all_probs = []
     all_subjects = []
 
+    weight = torch.tensor([1.0, 2.0, 4.0], device=device)
+    criterion = CrossEntropyLoss(weight=weight)
+    val_loss = 0.0
     with torch.no_grad():
         for batch in tqdm(val_loader, desc="Running Inference"):
             inputs = batch["T2"].to(device)
             labels = batch["label"].to(device)
 
             outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            val_loss += loss.item()
+
             probs = torch.softmax(outputs, dim=1)
             _, preds = torch.max(probs, 1)
 
@@ -157,16 +165,11 @@ def inference_and_evaluate(device, data_dir, csv_file, model_path, batch_size=4,
         "prob_severe": [p[2] for p in all_probs],
     })
     df.to_csv("predictions_val_sas.csv", index=False)
-    print("Saved ensemble prediction results to predictions_val_ensemble.csv")
+    print("Saved ensemble prediction results to predictions_val_sas.csv")
 
 
-    # Compute weighted cross-entropy loss
-    weight_tensor = torch.tensor([1.0, 2.0, 4.0], device=device)
-    all_probs_tensor = torch.tensor(all_probs, device=device)
-    all_labels_tensor = torch.tensor(all_labels, device=device)
-
-    weighted_loss = F.cross_entropy(all_probs_tensor, all_labels_tensor, weight=weight_tensor)
-    print(f"Weighted Cross-Entropy Loss: {weighted_loss.item():.4f}")
+    weighted_loss = val_loss / len(val_loader)
+    print(f"Weighted Cross-Entropy Loss: {weighted_loss:.4f}")
 
     # Confusion matrix
     cm = confusion_matrix(all_labels, all_preds)
@@ -177,9 +180,9 @@ def inference_and_evaluate(device, data_dir, csv_file, model_path, batch_size=4,
                 xticklabels=class_names, yticklabels=class_names)
     plt.xlabel("Predicted")
     plt.ylabel("True")
-    plt.title(f"Confusion Matrix (Ensemble)\nWeighted CE Loss = {weighted_loss.item():.4f}")
+    plt.title(f"Confusion Matrix SAS\nWeighted CE Loss = {weighted_loss:.4f}")
     plt.tight_layout()
-    plt.savefig("confusion_matrix_val_ensemble.png", bbox_inches='tight')
+    plt.savefig("confusion_matrix_val_sas.png", bbox_inches='tight')
     plt.close()
 
 

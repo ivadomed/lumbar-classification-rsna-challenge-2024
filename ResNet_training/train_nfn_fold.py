@@ -178,7 +178,7 @@ def plot_slices(image):
 
 
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4):
+def train_and_evaluate_model(device, data_dir, csv_file, fold, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4):
 
     train_dir = os.path.join(data_dir, 'training')
     val_dir = os.path.join(data_dir, 'validation')
@@ -217,7 +217,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'train_set_size': len(train_dataset),
         'val_set_size': len(val_dataset)
     }
-    model_name = f"nfn_t1_agressive_data_augmentation_{batch_size}"
+    model_name = f"nfn_{fold}"
 
     
     model = model.to(device)
@@ -347,18 +347,7 @@ def main():
 
     config = None
     output_path = "output_path"
-    wandb.init(project=f'ResNet_nfn', config=config, save_code=True, dir=output_path)
-
-
-    exp_logger = pl.loggers.WandbLogger(
-                        name="test",
-                        save_dir=output_path,
-                        group="rsna-lumbar-classification",
-                        log_model=True, # save best model using checkpoint callback
-                        config=config)
-
-    # Saving training script to wandb
-    wandb.save(config)
+    
 
     # Check if the data directory exists
     if not os.path.exists(data_dir):
@@ -373,9 +362,23 @@ def main():
     
     device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
+    for i in range(1,6): 
+        wandb.init(project=f'ResNet_nfn', config=config, save_code=True, dir=output_path)
 
-    wandb.finish()  
+
+        exp_logger = pl.loggers.WandbLogger(
+                            name="test",
+                            save_dir=output_path,
+                            group="rsna-lumbar-classification",
+                            log_model=True, # save best model using checkpoint callback
+                            config=config)
+
+        # Saving training script to wandb
+        wandb.save(config)
+        fold_dir = os.path.join(data_dir, f'fold{i}')
+        train_and_evaluate_model(device, fold_dir, csv_file, fold=i, batch_size=2, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4)
+
+        wandb.finish()  
 
 
 if __name__ == "__main__":
