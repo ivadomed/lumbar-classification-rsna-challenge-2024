@@ -357,7 +357,7 @@ def main():
     
     device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
-    for i in range(1,6): 
+    for i in range(2,6): 
         wandb.init(project=f'ResNet_sas', config=config, save_code=True, dir=output_path)
 
 
@@ -371,7 +371,7 @@ def main():
         # Saving training script to wandb
         wandb.save(config)
         fold_dir = os.path.join(data_dir, f'fold{i}')
-        train_and_evaluate_model(device, fold_dir, csv_file, fold=i, batch_size=2, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4)
+        train_and_evaluate_model(device, fold_dir, csv_file, fold=i, batch_size=2, lr=1e-4, epochs=25, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4)
 
         wandb.finish()  
 
