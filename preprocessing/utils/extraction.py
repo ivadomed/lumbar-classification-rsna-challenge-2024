@@ -194,8 +194,7 @@ def transform_seg2image(
     return output_seg
 
 
-# function for sagittal patches
-def patch_extraction_foraminal(vol, mask, affine):
+def patch_extraction_canal(vol, mask, affine): 
     """
     Extract two 3D patches from an MRI volume centered around mask's centroid
     
@@ -220,9 +219,9 @@ def patch_extraction_foraminal(vol, mask, affine):
     voxel_sizes = np.abs(np.diag(affine)[:3])
     
     patch_size_mm = {
-        'd': 50,  # depth
-        'h': 50,  # height
-        'w': 50   # width
+        'd': 25,  # depth
+        'h': 40,  # height
+        'w': 40   # width
     }
 
     # Patch sizes (in voxels)
@@ -234,19 +233,71 @@ def patch_extraction_foraminal(vol, mask, affine):
 
     
     # Extract patches centered on centroid with posterior displacement
-    patch1 = vol[
-        max(0, centroid[0] + 1):min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
+    patch = vol[
+        max(0, centroid[0] - patch_sizes_voxels['d']//2):min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
         max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
         max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
     ]
     
-    patch2 = vol[
-        max(0, centroid[0] -1 -patch_sizes_voxels['d']//2):min(D, centroid[0]-1),
-        max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
-        max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
-    ]
     
-    return patch1, patch2
+    return patch
+
+# uses lists of sagittal images and segmentations to extract patches for each disc
+def extract_and_save_canal_patches(sagittal_images, sagittal_segmentations, nii_folder, output_folder):
+    # Match each axial image to its corresponding sagittal segmentation
+    for img_name, seg_sag_name in zip(sagittal_images, sagittal_segmentations):
+        if "patch" not in img_name:
+            img_path = os.path.join(nii_folder, img_name)
+            seg_sag_path = os.path.join(nii_folder, seg_sag_name)
+            affine_ex = nib.load(img_path).affine
+            
+            # Load the volumetric image and sagittal segmentation
+            vol = nib.load(img_path).get_fdata()
+            seg_sag = nib.load(seg_sag_path).get_fdata()
+
+            # Détection des disques dans la segmentation sagittale
+            #The values to check are based on the classes in totalspineseg 
+            disc_l5 = np.isin(seg_sag, [100]).astype(int)
+            disc_l4 = np.isin(seg_sag, [95]).astype(int)
+            disc_l3 = np.isin(seg_sag, [94]).astype(int)
+            disc_l2 = np.isin(seg_sag, [93]).astype(int)
+            disc_l1 = np.isin(seg_sag, [92]).astype(int)
+
+            
+            discs_dict = {
+                "L1_L2": disc_l1,
+                "L2_L3": disc_l2,
+                "L3_L4": disc_l3,
+                "L4_L5": disc_l4,
+                "L5_S1": disc_l5
+            }    
+
+            # Extract and save patches for each disc
+            for disc_name, disc_mask in discs_dict.items():
+                if np.any(disc_mask):  # If the disc is found in the segmentation
+                    # Extract the patch using the segmentation mask
+                    
+                    patch_img = patch_extraction_canal(vol, disc_mask, affine_ex)
+
+                    if patch_img is not None:  # Proceed only if patch extraction was successful
+
+                        # Construct the filename and file path
+                        patch_img_filename = f"{img_name[:-7]}_{disc_name}_canal_patch.nii.gz"
+                        patch_img_filepath = os.path.join(output_folder, patch_img_filename)
+
+                        # Use the affine from the original volume to create the patch NIfTI image
+                        original_affine = nib.load(img_path).affine
+                        original_header = nib.load(img_path).header.copy()
+                        patch_nifti_img = nib.Nifti1Image(patch_img, affine=original_affine)
+                    
+                        q_code = int(original_header['qform_code'])
+                        s_code = int(original_header['sform_code'])
+
+                        patch_nifti_img.header.set_qform(original_affine, code=q_code)
+                        patch_nifti_img.header.set_sform(original_affine, code=s_code)
+
+                        # Save the patch to the specified location
+                        nib.save(patch_nifti_img, patch_img_filepath)
 
 # uses lists of sagittal images and segmentations to extract patches for each disc
 def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, nii_folder, output_folder):
@@ -312,6 +363,63 @@ def extract_and_save_sagittal_patches(sagittal_images, sagittal_segmentations, n
                         # Save the patch to the specified location
                         nib.save(patch_nifti_img_left, patch_img_filepath_left)
                         nib.save(patch_nifti_img_right, patch_img_filepath_right)
+
+
+# function for sagittal patches
+def patch_extraction_foraminal(vol, mask, affine):
+    """
+    Extract two 3D patches from an MRI volume centered around mask's centroid
+    
+    Parameters:
+    - vol: 3D numpy array representing the volume
+    - mask: 3D segmentation mask 
+    - affine: Affine matrix from the NIfTI file
+    
+    Returns:
+    - patch1, patch2: Two 3D numpy array patches
+    """
+    i = 0
+
+    D, H, W = vol.shape
+    # mask = torch.Tensor(mask)
+    # nonzero_indices = torch.nonzero(mask)
+    
+    # Calculate centroid of the mask and shift it along the disk axis
+    centroid = get_shifted_point_along_disk(mask).astype(int)
+
+    # Get voxel sizes from the affine matrix
+    voxel_sizes = np.abs(np.diag(affine)[:3])
+    
+    patch_size_mm = {
+        'd': 50,  # depth
+        'h': 50,  # height
+        'w': 50   # width
+    }
+
+    # Patch sizes (in voxels)
+    patch_sizes_voxels = {
+        'd': (patch_size_mm['d'] / voxel_sizes[0]).astype(int),
+        'h': (patch_size_mm['h'] / voxel_sizes[1]).astype(int),
+        'w': (patch_size_mm['w'] / voxel_sizes[2]).astype(int)
+    }
+
+    
+    # Extract patches centered on centroid with posterior displacement
+    patch1 = vol[
+        max(0, centroid[0] + 1):min(D, centroid[0] + patch_sizes_voxels['d']//2 +1),
+        max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
+        max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
+    ]
+    
+    patch2 = vol[
+        max(0, centroid[0] -1 -patch_sizes_voxels['d']//2):min(D, centroid[0]-1),
+        max(0, centroid[1] - patch_sizes_voxels['h']//2):min(H, centroid[1] + patch_sizes_voxels['h']//2),
+        max(0, centroid[2] - patch_sizes_voxels['w']//2):min(W, centroid[2] + patch_sizes_voxels['w']//2)
+    ]
+    
+    return patch1, patch2
+
+
 
 # uses lists of axial images and segmentations to extract patches for each disc
 def extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder):
@@ -414,7 +522,7 @@ def extract_patches_from_discs(nii_folder, output_folder):
     sagittal_T2_segmentations.sort()
     
 
-    extract_and_save_sagittal_patches(sagittal_T2_images, sagittal_T2_segmentations, nii_folder, output_folder)
+    extract_and_save_canal_patches(sagittal_T2_images, sagittal_T2_segmentations, nii_folder, output_folder)
     extract_and_save_sagittal_patches(sagittal_T1_images, sagittal_T1_segmentations, nii_folder, output_folder)
     extract_and_save_axial_patches(axial_images, axial_segmentations, nii_folder, output_folder)
 
@@ -528,6 +636,7 @@ def process_all_subjects_in_directory(root_dir):
                 os.makedirs(output_subject_path, exist_ok=True)
                 # Apply the patch extraction function to each subject
                 extract_patches_from_discs(subject_path, output_subject_path)
+                print(f'success:{subject_folder}')
 
                 # Apply the function to select the best patches if there are multiple ones for the same disc
                 #select_best_patches(output_subject_path)
