@@ -52,7 +52,7 @@ def reorient_pixel_coords(x, y, z, shape, flips):
         y = shape[0] - 1 - y
     if not flips[2]:  # z: left to right
         z = shape[2] - 1 - z
-    return x, y, z
+    return x, y, z + 1 
 
 def main(args):
     df = pd.read_csv(args.csv_input)
