@@ -1,5 +1,5 @@
 """
-This script is used to train a ResNet model for the RSNA lumbar classification challenge 2024 for the subarticular stenosis pathology.
+This script is used to train a ResNet model for the RSNA lumbar classification challenge 2024 for the spinal canal stenosis pathology.
 Author: Thomas Dagonneau and Abel Salmona
 
 Input: 
@@ -17,31 +17,32 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import pandas as pd
-from monai.data import Dataset, DataLoader
+import monai
 from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd, Cropd, SpatialCropd
+    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
-from torch.utils.data import DataLoader, ConcatDataset
+from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
 import torch.optim as optim
 from torch.nn import CrossEntropyLoss
+from monai.transforms import Compose
+from monai.data import Dataset
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import nibabel as nib
 import argparse  
-import torchio as tio
-from utils.image import Image
-import torch.nn as nn
+from monai.data import Dataset, DataLoader
 import wandb
 import pytorch_lightning as pl
 from utils.augment import *
 
+# Function to parse command-line arguments
 def parse_args():
     parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
     parser.add_argument('--data', type=str, required=True, help="Directory where the data is stored.")
@@ -49,41 +50,32 @@ def parse_args():
     return parser.parse_args()
 
 
-#Weights used in the loss for the challenge
+# weights of the loss
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
-def get_transforms(mode='basic', left=True):
+
+# transformation pipeline for the data
+def get_transforms(mode='basic'):
     # Define the transform pipeline with rotation augmentation
     
     first_transforms = [
         LoadImaged(keys=['T2']),
         EnsureChannelFirstd(keys=['T2']),
-        Spacingd(keys=['T2'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
-        SpatialPadd(keys=['T2'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
-        CenterSpatialCropd(keys=['T2'], roi_size=(120,80, 6)),  # Adjust crop for 2D
-
-
+        Spacingd(keys=['T2'], pixdim=(4, 0.4, 0.4), mode=('bilinear')),
+        SpatialPadd(keys=['T2'], spatial_size=(6,80, 80)),  # Adjust padding for 2D
     ]
 
-    if left: 
-        crop_transform = [
-            SpatialCropd(keys=["T2"], roi_size=(60, 80, 6), roi_center=(30, 40, 3))
-        ]
-
-    else: 
-        crop_transform = [
-            SpatialCropd(keys=["T2"], roi_size=(60, 80, 6), roi_center=(90, 40, 3))
-        ]
-
     second_transforms_basic = [
+        CenterSpatialCropd(keys=['T2'], roi_size=(6,80, 80)),  # Adjust crop for 2D
         ScaleIntensityd(keys=['T2']), 
         NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),
         ToTensord(keys=['T2'])
         ]
     
     second_transforms_random = [
-        RandFlipd(keys=['T2'], prob=0.5, spatial_axis=0),
-        RandRotated(keys=['T2'], prob=0.5, range_z=0.1),
+        RandRotated(keys=['T2'], prob=0.5, range_y=0.1),
+        SpatialPadd(keys=['T2'], spatial_size=(6,80, 80)), 
+        RandSpatialCropd(keys=['T2'], roi_size=(6,80, 80), random_size=False),  
         RandLambdad(keys=['T2'],func=aug_sqrt,prob=0.05,),
         RandLambdad(keys=['T2'],func=aug_sin,prob=0.05,),
         RandLambdad(keys=['T2'],func=aug_exp,prob=0.05,),
@@ -96,124 +88,78 @@ def get_transforms(mode='basic', left=True):
         RandGaussianNoised(keys=['T2'], mean=0.0, std=0.1, prob=0.05),
         RandGaussianSharpend(keys=['T2'], prob=0.05),   
 
-        #Rand3DElasticd(keys=['T2'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
+        #Rand3DElasticd(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
 
-        ResizeWithPadOrCropd(keys=['T2'], spatial_size=(60, 80, 6)),
+        ResizeWithPadOrCropd(keys=['T2'], spatial_size=(6, 80, 80)),
         RandScaleIntensityd(keys=['T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
         NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
         ToTensord(keys=['T2'])
         ]
 
     if mode == 'basic':
-        common_transforms = Compose(first_transforms + crop_transform + second_transforms_basic)
-       
-    elif mode == 'random':
-        common_transforms = Compose(first_transforms + crop_transform + second_transforms_random)
         
+        common_transforms = Compose(first_transforms  + second_transforms_basic)
+
+    elif mode == 'random':
+       
+        common_transforms = Compose(first_transforms + second_transforms_random)
+    
     return common_transforms
+    
 
 
-def prepare_data(data_dir, csv_file):
-    data_left = []
-    data_right = []
+def prepare_data(data_dir, csv_file, transform):
+    data = []
     labels_df = pd.read_csv(csv_file)
-    counter = 0 
+    
+    counter = 0
 
     # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
-       
+        print(subject)
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
-                if '_patch.nii.gz' in file and 'sag' not in file and 'T2w' in file:
-                    t2_path = os.path.join(subject_dir, file)
+                if '_patch.nii.gz' in file and 'canal' in file:
+                    image_path = os.path.join(subject_dir, file)
                     
-                    parts = t2_path.split('_')
-
+                    parts = image_path.split('_')
                     disk_level = f"{parts[-3]}_{parts[-2]}"
-       
 
-                    if os.path.exists(t2_path):
-                        
+                    if os.path.exists(image_path):
+                      
                         subject_id = (subject.replace('sub-', ''))
                         
-                        label_column_left = f'left_subarticular_stenosis_{disk_level.lower()}'
-                        label_left = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column_left].values[0]
-                        # Convertir l'étiquette textuelle en valeur numérique
-                        label_numeric_left = text2int.get(label_left, -1)
-                        if label_numeric_left != -1:
-
-                            data_left.append({"T2": t2_path, "label": label_numeric_left})
-                            counter +=1
-
-                    
-                        label_column_right = f'right_subarticular_stenosis_{disk_level.lower()}'
-
-                        label_right = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column_right].values[0]
-                        # Convertir l'étiquette textuelle en valeur numérique
-                        label_numeric_right = text2int.get(label_right, -1)
-                        if label_numeric_right != -1:
-
-                            data_right.append({"T2": t2_path, "label": label_numeric_right})
-                            counter +=1
+                        label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
+                        # Obtenir l'étiquette brute
                         
-    print(counter)                                  
-    return data_left, data_right 
-    
-def plot_slices(image):
-    """
-    Plot the image, ground truth and prediction of the mid-sagittal axial slice
-    The orientaion is assumed to LPI
-    """
-
-    # bring everything to numpy 
-    ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
-    image = image.float().numpy()
-    
-
-    mid_sagittal = image.shape[2]//2
-    # plot X slices before and after the mid-sagittal slice in a grid
-    fig, axs = plt.subplots(1, 6, figsize=(18, 54))
-    fig.suptitle('Original Image')
-    for i in range(6):
-        axs[i].imshow(image[:,:,mid_sagittal-3+i].T, cmap='gray'); axs[i].axis('off') 
-        
-  
-    
-    plt.tight_layout()
-    fig.show()
-    
-    return fig
+                        label = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column].values[0]
+                        
+                        # Convertir l'étiquette textuelle en valeur numérique
+                        label_numeric = text2int.get(label, -1)
+                        if label_numeric != -1:
+                            counter += 1
+                            data.append({"T2": image_path, "label": label_numeric})
 
 
+    print(f"Nombre de données chargées: {counter}")
+    return Dataset(data=data, transform=transform)
 
-
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4):
-
-    train_dir = os.path.join(data_dir, 'training')
-    val_dir = os.path.join(data_dir, 'validation')
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=0.0001, augment=False):
     # Préparer les données
+    data_dir_train = os.path.join(data_dir, 'training')
+    data_dir_val = os.path.join(data_dir, 'validation')
 
-    train_transform_left=get_transforms(mode='random', left=True)
-    train_transform_right=get_transforms(mode='random', left=False)
-    train_data_left, train_data_right = prepare_data(train_dir, csv_file)
-
-    train_dataset_left = Dataset(train_data_left, train_transform_left)
-    train_dataset_right = Dataset(train_data_right, train_transform_right)
-    train_dataset = ConcatDataset([train_dataset_left,train_dataset_right])
-
-    val_transform_left = get_transforms(mode='basic', left=True)
-    val_transform_right = get_transforms(mode='basic', left=False)
-    val_data_left, val_data_right = prepare_data(val_dir, csv_file)
-    val_dataset_left = Dataset(val_data_left, val_transform_left)
-    val_dataset_right = Dataset(val_data_right, val_transform_right)
-    val_dataset = ConcatDataset([val_dataset_left, val_dataset_right])
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    transform_basic=get_transforms()
+    transform_random=get_transforms(mode='random')
+    data_train = prepare_data(data_dir_train, csv_file, transform_random)
+    data_val = prepare_data(data_dir_val, csv_file, transform_basic)
+    
+    train_loader = DataLoader(data_train, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(data_val, batch_size=batch_size, shuffle=False)
     
     # Définir le modèle, la loss function et l'optimiseur
     model = ResNet(
@@ -233,16 +179,18 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'val_split': val_split,
         'layers': layers,
         'weight_decay': wd,
-        'train_set_size': len(train_dataset),
-        'val_set_size': len(val_dataset)
+        'augment': augment,
+        'train_set_size': len(data_train),
+        'val_set_size': len(data_val),
+        'randbiaisfield prob and coeff': (0.4, 0.3)
     }
-    model_name = f"sas_agressive_data_augmentation_{batch_size}"
+    model_name = f"scs_agressive_data_augmentation"
 
     
     model = model.to(device)
     
     criterion = CrossEntropyLoss(weight=weight)
-    
+
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay= wd)
 
     # Listes pour stocker la perte et l'exactitude
@@ -252,16 +200,22 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
     # Entraînement
     for epoch in range(epochs):
+
+        counter = 0 
+        
         print(f"Epoch {epoch+1}/{epochs}")
         model.train()
         running_loss = 0.0
         correct_predictions = 0
         total_predictions = 0
 
-        counter = 0 
+
 
         for batch in tqdm(train_loader):
+            
             inputs = batch["T2"].cuda()
+            labels = batch["label"].cuda()
+
             if counter%500 == 0 : 
                 train_image= inputs[0].detach().cpu().squeeze()
                 
@@ -272,9 +226,6 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
                 wandb.log({"training images": wandb.Image(fig)})
                 plt.close(fig)
-
-
-            labels = batch["label"].cuda()
             
             # Forward pass
             optimizer.zero_grad()
@@ -292,10 +243,10 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             total_predictions += labels.size(0)
             counter +=1 
 
-        train_losses.append(running_loss / len(train_loader))
 
+        train_losses.append(running_loss / len(train_loader))
         wandb.log({"train_loss": train_losses[-1], "epoch": epoch})  # Log training loss
-    
+
 
         print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
 
@@ -331,17 +282,13 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
                 _, predicted = torch.max(outputs, 1)
                 correct_predictions += (predicted == labels).sum().item()
                 total_predictions += labels.size(0)
-                counter += 1 
+                counter +=1 
 
 
         val_losses.append(val_loss / len(val_loader))
-
-        accuracy = 100 * correct_predictions / total_predictions
         wandb.log({"val_loss": val_losses[-1], "epoch": epoch})  # Log validation loss
 
-        print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {accuracy}%")
-
-        
+        print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {100 * correct_predictions / total_predictions}%")
 
         if val_losses[-1] < best_val_loss:
             print(f"Validation loss improved from {best_val_loss:.4f} to {val_losses[-1]:.4f}. Saving model...")
@@ -350,23 +297,50 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             # Sauvegarde du modèle
             torch.save(model.state_dict(), f"model/{model_name}.pth")
 
-
     print("Entraînement terminé.")
+
+
+   
+ 
+def plot_slices(image):
+    """
+    Plot the image, ground truth and prediction of the mid-sagittal axial slice
+    The orientaion is assumed to RPI
+    """
+
+    # bring everything to numpy 
+    ## added the .float() because of issue : TypeError: Got unsupported ScalarType BFloat16
+    image = image.float().numpy()
+    
+
+    mid_axial = image.shape[2]//2
+    # plot X slices before and after the mid-sagittal slice in a grid
+    fig, axs = plt.subplots(1, 6, figsize=(18, 54))
+    fig.suptitle('Original Image')
+    for i in range(6):
+        axs[i].imshow(image[:,:,mid_axial-3+i].T, cmap='gray'); axs[i].axis('off') 
+
+
+    plt.tight_layout()
+    fig.show()
+    
+    return fig   
 
 
 
 def main():
+
     # Parse command-line arguments
     args = parse_args()
-
+    
     # Extract the data directory and CSV file path
     data_dir = args.data
     csv_file = args.csv_file
-
+    
 
     config = None
     output_path = "output_path"
-    wandb.init(project=f'ResNet_sas', config=config, save_code=True, dir=output_path)
+    wandb.init(project=f'ResNet_scs', config=config, save_code=True, dir=output_path)
 
 
     exp_logger = pl.loggers.WandbLogger(
@@ -379,6 +353,8 @@ def main():
     # Saving training script to wandb
     wandb.save(config)
 
+  
+
     # Check if the data directory exists
     if not os.path.exists(data_dir):
         print(f"Error: The data directory '{data_dir}' does not exist.")
@@ -389,11 +365,14 @@ def main():
         print(f"Error: The CSV file '{csv_file}' does not exist.")
         return
     
+   # Specify the GPU index (0, 1, 2, ...)
+    gpu_id = 0  # Change this to the desired GPU index
+    device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
+
     
-    device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
-
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+   
     wandb.finish()  
 
 
