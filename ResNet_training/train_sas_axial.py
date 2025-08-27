@@ -236,7 +236,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         'train_set_size': len(train_dataset),
         'val_set_size': len(val_dataset)
     }
-    model_name = f"sas_agressive_data_augmentation_{batch_size}"
+    model_name = f"sas_5"
 
     
     model = model.to(device)
