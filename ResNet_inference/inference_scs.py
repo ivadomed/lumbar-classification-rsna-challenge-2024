@@ -21,7 +21,6 @@ def parse_args():
     return parser.parse_args()
 
 
-# transformation pipeline for the data
 def get_transforms_scs():
     
     first_transforms = [

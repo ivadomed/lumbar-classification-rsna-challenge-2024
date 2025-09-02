@@ -28,11 +28,11 @@ def get_transforms_nfn():
         LoadImaged(keys=['T1']),
         EnsureChannelFirstd(keys=['T1']),
         Spacingd(keys=['T1'], pixdim=(4, 0.4, 0.4), mode=('bilinear')),
-        SpatialPadd(keys=['T1'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
+        SpatialPadd(keys=['T1'], spatial_size=(6,100, 100)), 
     ]
 
     second_transforms_basic = [
-        CenterSpatialCropd(keys=['T1'], roi_size=(6,100, 100)),  # Adjust crop for 2D
+        CenterSpatialCropd(keys=['T1'], roi_size=(6,100, 100)), 
         ScaleIntensityd(keys=['T1']), 
         NormalizeIntensityd(keys=['T1'], nonzero=True, channel_wise=True),
         ToTensord(keys=['T1'])
