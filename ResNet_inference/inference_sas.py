@@ -1,33 +1,17 @@
 import os
-import numpy as np
 import torch
 from tqdm import tqdm
 import pandas as pd
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
-    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
-    ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd, SpatialCropd
+    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, 
+    ToTensord, SpatialPadd, CenterSpatialCropd, Spacingd,
+    NormalizeIntensityd, SpatialCropd
 )
-from monai.networks.nets import DenseNet201, ResNet
-import torch
+from monai.networks.nets import ResNet
+import argparse 
 from torch.utils.data import DataLoader, ConcatDataset
-import torch.optim as optim
-from torch.nn import CrossEntropyLoss
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import nibabel as nib
-import argparse  
-import torchio as tio
-import torch.nn as nn
-import wandb
-import pytorch_lightning as pl
-import torch.nn.functional as F
 import csv 
-
 
 
 def parse_args():
@@ -37,19 +21,14 @@ def parse_args():
     return parser.parse_args()
 
 
-
-
 def get_transforms_sas(left=True):
-    # Define the transform pipeline with rotation augmentation
     
     first_transforms = [
         LoadImaged(keys=['T2']),
         EnsureChannelFirstd(keys=['T2']),
-        Spacingd(keys=['T2'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
-        SpatialPadd(keys=['T2'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
-        CenterSpatialCropd(keys=['T2'], roi_size=(120,80, 6)),  # Adjust crop for 2D
-
-
+        Spacingd(keys=['T2'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  
+        SpatialPadd(keys=['T2'], spatial_size=(120, 80, 6)), 
+        CenterSpatialCropd(keys=['T2'], roi_size=(120,80, 6)),  
     ]
 
     if left: 
@@ -68,10 +47,8 @@ def get_transforms_sas(left=True):
         ToTensord(keys=['T2'])
         ]
     
-    
     common_transforms = Compose(first_transforms + crop_transform + second_transforms_basic)
-       
-        
+    
     return common_transforms
 
 
@@ -101,10 +78,8 @@ def prepare_data_sas(data_dir, transform_right, transform_left):
                         
                         label_column_left = f'{subject}_left_subarticular_stenosis_{disk_level.lower()}'
                             
-                        
                         label_column_right = f'{subject}_right_subarticular_stenosis_{disk_level.lower()}'
-                            
-                                
+                                                          
                         data_left.append({"T2": t2_path, "label": label_column_left})
                         data_right.append({"T2": t2_path, "label": label_column_right})
                         counter +=1
@@ -114,7 +89,6 @@ def prepare_data_sas(data_dir, transform_right, transform_left):
 
 def inference_sas(device, data_dir, model_path, batch_size=4, layers=[3, 4, 6, 3]):
 
-    # Prepare validation dataset
     transform_right = get_transforms_sas(left = False)
     transform_left = get_transforms_sas(left = True )
     dataset = prepare_data_sas(data_dir, transform_right, transform_left)
@@ -185,7 +159,6 @@ def inference_sas(device, data_dir, model_path, batch_size=4, layers=[3, 4, 6, 3
 
     pred = []
 
-
     with torch.no_grad():
         for batch in tqdm(data_loader):
             inputs = batch["T2"].to(device)
@@ -220,7 +193,6 @@ def main():
         print(f"Error: Model folder not found at {model_path}")
         return
 
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     pred_sas = inference_sas(
@@ -237,11 +209,16 @@ def main():
         writer = csv.writer(f)
         
         # Write header
-        writer.writerow(["label", "Normal/Mild", "Moderate", "Severe"])
+        writer.writerow(["subject", "pathology", "level", "Normal/Mild", "Moderate", "Severe"])
         
         # Write each prediction
         for label, output in pred_sas:
-            writer.writerow([label, round(output[0],2), round(output[1],2), round(output[2],2)])
+            parts = label.split("_")
+            subject = parts[0]  # e.g. sub-121
+            pathology = "_".join(parts[1:-2])  # e.g. left_neural_foraminal_narrowing
+            level = "_".join(parts[-2:])  # e.g. l5_s1
+            
+            writer.writerow([subject, pathology, level, round(output[0], 2), round(output[1], 2), round(output[2], 2)])
 
 
 

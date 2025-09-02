@@ -25,7 +25,6 @@ def main():
         print(f"Error: Model folder not found at {model_path}")
         return
 
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     pred_nfn = inference_nfn(
@@ -47,7 +46,6 @@ def main():
             model_path=model_path,
         )
     
-
     pred = pred_nfn + pred_sas + pred_scs
 
     pred_sorted = sorted(pred, key=lambda x: x[0])

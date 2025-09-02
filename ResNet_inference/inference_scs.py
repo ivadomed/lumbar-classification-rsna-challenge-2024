@@ -1,33 +1,16 @@
 import os
-import numpy as np
 import torch
 from tqdm import tqdm
-import pandas as pd
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
-    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
-    ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd
+    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, 
+    ToTensord, SpatialPadd, CenterSpatialCropd, Spacingd,
+    NormalizeIntensityd, 
 )
-from monai.networks.nets import DenseNet201, ResNet
-import torch
-from torch.utils.data import DataLoader, ConcatDataset
-import torch.optim as optim
-from torch.nn import CrossEntropyLoss
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import nibabel as nib
+from monai.networks.nets import ResNet
+from torch.utils.data import DataLoader
 import argparse  
-import torchio as tio
-import torch.nn as nn
-import wandb
-import pytorch_lightning as pl
-import torch.nn.functional as F
 import csv 
-
 
 
 def parse_args():
@@ -44,17 +27,16 @@ def get_transforms_scs():
         LoadImaged(keys=['T2']),
         EnsureChannelFirstd(keys=['T2']),
         Spacingd(keys=['T2'], pixdim=(4, 0.4, 0.4), mode=('bilinear')),
-        SpatialPadd(keys=['T2'], spatial_size=(6,80, 80)),  # Adjust padding for 2D
+        SpatialPadd(keys=['T2'], spatial_size=(6,80, 80)),  
     ]
 
     second_transforms_basic = [
-        CenterSpatialCropd(keys=['T2'], roi_size=(6,80, 80)),  # Adjust crop for 2D
+        CenterSpatialCropd(keys=['T2'], roi_size=(6,80, 80)), 
         ScaleIntensityd(keys=['T2']), 
         NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),
         ToTensord(keys=['T2'])
         ]
-    
-            
+                
     common_transforms = Compose(first_transforms  + second_transforms_basic)
     
     return common_transforms
@@ -83,8 +65,6 @@ def prepare_data_scs(data_dir, transform):
                        
                         data.append({"T2": image_path, "label": label_column})
                         counter +=1
-
-
 
     print(f"Nombre de données chargées: {counter}")
     return Dataset(data=data, transform=transform)
@@ -194,7 +174,6 @@ def main():
         print(f"Error: Model folder not found at {model_path}")
         return
 
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     pred_scs = inference_scs(
@@ -211,12 +190,16 @@ def main():
         writer = csv.writer(f)
         
         # Write header
-        writer.writerow(["label", "Normal/Mild", "Moderate", "Severe"])
+        writer.writerow(["subject", "pathology", "level", "Normal/Mild", "Moderate", "Severe"])
         
         # Write each prediction
         for label, output in pred_scs:
-            writer.writerow([label, round(output[0],2), round(output[1],2), round(output[2],2)])
-
+            parts = label.split("_")
+            subject = parts[0]  # e.g. sub-121
+            pathology = "_".join(parts[1:-2])  # e.g. left_neural_foraminal_narrowing
+            level = "_".join(parts[-2:])  # e.g. l5_s1
+            
+            writer.writerow([subject, pathology, level, round(output[0], 2), round(output[1], 2), round(output[2], 2)])
 
 
 if __name__ == "__main__":

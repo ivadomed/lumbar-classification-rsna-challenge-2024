@@ -1,32 +1,15 @@
 import os
-from pyexpat import model
-import numpy as np
 import torch
 from tqdm import tqdm
-import pandas as pd
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
-    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
-    ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd
+    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd,
+    ToTensord, SpatialPadd, CenterSpatialCropd, Spacingd, 
+    NormalizeIntensityd
 )
-from monai.networks.nets import DenseNet201, ResNet
-import torch
+from monai.networks.nets import ResNet
 from torch.utils.data import DataLoader, ConcatDataset
-import torch.optim as optim
-from torch.nn import CrossEntropyLoss
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import nibabel as nib
 import argparse  
-import torchio as tio
-import torch.nn as nn
-import wandb
-import pytorch_lightning as pl
-import torch.nn.functional as F
 import csv 
 
 
@@ -39,9 +22,7 @@ def parse_args():
 
 
 
-def get_transforms_nfn():
-    # Define the transform pipeline with rotation augmentation
-    
+def get_transforms_nfn():    
     first_transforms = [
         LoadImaged(keys=['T1']),
         EnsureChannelFirstd(keys=['T1']),
@@ -55,14 +36,9 @@ def get_transforms_nfn():
         NormalizeIntensityd(keys=['T1'], nonzero=True, channel_wise=True),
         ToTensord(keys=['T1'])
         ]
-    
-    
-
-    
         
     common_transforms = Compose(first_transforms  + second_transforms_basic)
 
-    
     return common_transforms
 
 def prepare_data_nfn(data_dir, transform):
@@ -71,7 +47,6 @@ def prepare_data_nfn(data_dir, transform):
     
     counter = 0 
 
-    
     for subject in os.listdir(data_dir):
        
         subject_dir = os.path.join(data_dir, subject, 'anat')
@@ -85,21 +60,18 @@ def prepare_data_nfn(data_dir, transform):
 
                     disk_level = f"{parts[-5]}_{parts[-4]}"
        
-
                     if os.path.exists(t1_path):
                         
                         subject_id = (subject.replace('sub-', ''))
                         if 'left' in file:
                             label_column = f'{subject}_left_neural_foraminal_narrowing_{disk_level.lower()}'
-                            
-                                
+                                                            
                             data_left.append({"T1": t1_path, "label": label_column})
                             counter +=1
          
                         if 'right' in file:
                             label_column = f'{subject}_right_neural_foraminal_narrowing_{disk_level.lower()}'
-                            
-                                
+                                                          
                             data_right.append({"T1": t1_path, "label": label_column})
                             counter +=1
                         
@@ -178,13 +150,10 @@ def inference_nfn(device, data_dir, model_path, batch_size=4, layers=[3, 4, 6, 3
     
     with torch.no_grad():
         for batch in tqdm(data_loader):
-            
-            
+                        
             inputs = batch["T1"].cuda()
             labels = batch["label"]
-            
-            
-           
+                   
             outputs1 = model1(inputs) 
             outputs2 = model2(inputs) 
             outputs3 = model3(inputs) 
@@ -216,7 +185,6 @@ def main():
         print(f"Error: Model folder not found at {model_path}")
         return
 
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     pred_nfn = inference_nfn(
@@ -233,11 +201,16 @@ def main():
         writer = csv.writer(f)
         
         # Write header
-        writer.writerow(["label", "Normal/Mild", "Moderate", "Severe"])
+        writer.writerow(["subject", "pathology", "level", "Normal/Mild", "Moderate", "Severe"])
         
         # Write each prediction
         for label, output in pred_nfn:
-            writer.writerow([label, round(output[0],2), round(output[1],2), round(output[2],2)])
+            parts = label.split("_")
+            subject = parts[0]  # e.g. sub-121
+            pathology = "_".join(parts[1:-2])  # e.g. left_neural_foraminal_narrowing
+            level = "_".join(parts[-2:])  # e.g. l5_s1
+            
+            writer.writerow([subject, pathology, level, round(output[0], 2), round(output[1], 2), round(output[2], 2)])
 
 
 
