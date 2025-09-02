@@ -8,7 +8,7 @@ from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
     ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
     NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd
+    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd, SpatialCropd
 )
 from monai.networks.nets import DenseNet201, ResNet
 import torch
@@ -26,101 +26,103 @@ import torch.nn as nn
 import wandb
 import pytorch_lightning as pl
 import torch.nn.functional as F
+import csv 
 
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', required=True)
-    parser.add_argument('--csv_file', required=True)
     parser.add_argument('--model_path', required=True)
     return parser.parse_args()
 
 
 
-def get_transforms_sas():
+
+def get_transforms_sas(left=True):
     # Define the transform pipeline with rotation augmentation
     
     first_transforms = [
         LoadImaged(keys=['T2']),
         EnsureChannelFirstd(keys=['T2']),
-        Spacingd(keys=['T2'], pixdim=(4, 0.4, 0.4), mode=('bilinear')),
-        SpatialPadd(keys=['T2'], spatial_size=(6,100, 100)),  # Adjust padding for 2D
+        Spacingd(keys=['T2'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
+        SpatialPadd(keys=['T2'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
+        CenterSpatialCropd(keys=['T2'], roi_size=(120,80, 6)),  # Adjust crop for 2D
+
+
     ]
 
+    if left: 
+        crop_transform = [
+            SpatialCropd(keys=["T2"], roi_size=(60, 80, 6), roi_center=(30, 40, 3))
+        ]
+
+    else: 
+        crop_transform = [
+            SpatialCropd(keys=["T2"], roi_size=(60, 80, 6), roi_center=(90, 40, 3))
+        ]
+
     second_transforms_basic = [
-        CenterSpatialCropd(keys=['T2'], roi_size=(6,100, 100)),  # Adjust crop for 2D
         ScaleIntensityd(keys=['T2']), 
         NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),
         ToTensord(keys=['T2'])
         ]
     
     
-
-    
-    common_transforms = Compose(first_transforms + second_transforms_basic)
+    common_transforms = Compose(first_transforms + crop_transform + second_transforms_basic)
        
-   
         
     return common_transforms
 
-def prepare_data(data_dir, csv_file):
-    data = []
-    
-    labels_df = pd.read_csv(csv_file)
-    counter = 0 
 
-    # Dictionnaire de conversion des étiquettes
-    text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
+
+
+def prepare_data_sas(data_dir, transform_right, transform_left):
+    data_right = []
+    data_left = []
+    counter = 0 
     
-    for subject in os.listdir(data_dir):
-       
-        
+    for subject in os.listdir(data_dir):        
 
         subject_dir = os.path.join(data_dir, subject, 'anat')
         if os.path.isdir(subject_dir):
             for file in os.listdir(subject_dir):
                 
-                if '_patch.nii.gz' in file and 'foramen' in file and 'T2w' in file:
+                if '_patch.nii.gz' in file and 'sag' not in file and 'T2w' in file:
                     t2_path = os.path.join(subject_dir, file)
                     
                     parts = t2_path.split('_')
 
-                    disk_level = f"{parts[-5]}_{parts[-4]}"
-       
+                    disk_level = f"{parts[-3]}_{parts[-2]}"       
 
                     if os.path.exists(t2_path):
                         
                         subject_id = (subject.replace('sub-', ''))
-                        if 'left' in file:
-                            label_column = f'left_subarticular_stenosis_{disk_level.lower()}'
-
-                        if 'right' in file:
-                            label_column = f'right_subarticular_stenosis_{disk_level.lower()}'
-                            
-                        label = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column].values[0]
-                        # Convertir l'étiquette textuelle en valeur numérique
-                        label_numeric = text2int.get(label, -1)
-                        if label_numeric != -1:
-                            
-                            data.append({"T2": t2_path, "label": label_numeric})
-                            counter +=1
                         
-    print(counter)                                  
-    return data
+                        label_column_left = f'{subject}_left_subarticular_stenosis_{disk_level.lower()}'
+                            
+                        
+                        label_column_right = f'{subject}_right_subarticular_stenosis_{disk_level.lower()}'
+                            
+                                
+                        data_left.append({"T2": t2_path, "label": label_column_left})
+                        data_right.append({"T2": t2_path, "label": label_column_right})
+                        counter +=1
+
+    return ConcatDataset([Dataset(data_left, transform_left),Dataset(data_right, transform_right)])
 
 
-def inference_and_evaluate(device, data_dir, csv_file, model_path, batch_size=16, layers=[3, 4, 6, 3]):
-    val_dir = os.path.join(data_dir, 'validation')
+def inference_sas(device, data_dir, model_path, batch_size=4, layers=[3, 4, 6, 3]):
 
     # Prepare validation dataset
-    val_transform = get_transforms_sas()
-    val_data = prepare_data(val_dir, csv_file)
-    val_dataset = Dataset(val_data, val_transform)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    transform_right = get_transforms_sas(left = False)
+    transform_left = get_transforms_sas(left = True )
+    dataset = prepare_data_sas(data_dir, transform_right, transform_left)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     # Load model
-    model = ResNet(
+    
+    """model1 = ResNet(
         block="bottleneck",
         layers=layers,
         block_inplanes=[64, 128, 256, 512],
@@ -129,87 +131,117 @@ def inference_and_evaluate(device, data_dir, csv_file, model_path, batch_size=16
         num_classes=3,
     ).to(device)
 
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.eval()
+    model1.load_state_dict(torch.load(f'{model_path}/sas_1.pth', map_location=device))
+    model1.eval()"""
 
-    all_preds = []
-    all_labels = []
-    all_probs = []
-    all_subjects = []
+    model2 = ResNet(
+        block="bottleneck",
+        layers=layers,
+        block_inplanes=[64, 128, 256, 512],
+        spatial_dims=3,
+        n_input_channels=1,
+        num_classes=3,
+    ).to(device)
 
-    weight = torch.tensor([1.0, 2.0, 4.0], device=device)
-    criterion = CrossEntropyLoss(weight=weight)
-    val_loss = 0.0
+    model2.load_state_dict(torch.load(f'{model_path}/sas_2.pth', map_location=device))
+    model2.eval()
+
+    model3 = ResNet(
+        block="bottleneck",
+        layers=layers,
+        block_inplanes=[64, 128, 256, 512],
+        spatial_dims=3,
+        n_input_channels=1,
+        num_classes=3,
+    ).to(device)
+
+    model3.load_state_dict(torch.load(f'{model_path}/sas_3.pth', map_location=device))
+    model3.eval()
+
+    model4 = ResNet(
+        block="bottleneck",
+        layers=layers,
+        block_inplanes=[64, 128, 256, 512],
+        spatial_dims=3,
+        n_input_channels=1,
+        num_classes=3,
+    ).to(device)
+
+    model4.load_state_dict(torch.load(f'{model_path}/sas_4.pth', map_location=device))
+    model4.eval()
+
+    """model5 = ResNet(
+        block="bottleneck",
+        layers=layers,
+        block_inplanes=[64, 128, 256, 512],
+        spatial_dims=3,
+        n_input_channels=1,
+        num_classes=3,
+    ).to(device)
+
+    model5.load_state_dict(torch.load(f'{model_path}/sas_5.pth', map_location=device))
+    model5.eval()
+    """
+
+    pred = []
+
+
     with torch.no_grad():
-        for batch in tqdm(val_loader, desc="Running Inference"):
+        for batch in tqdm(data_loader):
             inputs = batch["T2"].to(device)
-            labels = batch["label"].to(device)
+            labels = batch["label"]
 
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            val_loss += loss.item()
+            #outputs1 = model1(inputs) 
+            outputs2 = model2(inputs) 
+            outputs3 = model3(inputs) 
+            outputs4 = model4(inputs) 
+            #outputs5 = model5(inputs) 
 
-            probs = torch.softmax(outputs, dim=1)
-            _, preds = torch.max(probs, 1)
+            outputs = (outputs4 + outputs2 + outputs3)/3 #+ outputs4 + outputs5)/5
+            
+            outputs = list(outputs.softmax(dim = 1).cpu().numpy())
+            
+            for i in range(len(labels)): 
+                label = labels [i]
+                output = list(outputs[i])
+                
+                pred.append((label, output))
+    
+    pred_sorted = sorted(pred, key=lambda x: x[0])
 
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-            all_probs.extend(probs.cpu().numpy())
-
-    # Save CSV
-    df = pd.DataFrame({
-        "label": all_labels,
-        "predicted": all_preds,
-        "prob_normal_mild": [p[0] for p in all_probs],
-        "prob_moderate": [p[1] for p in all_probs],
-        "prob_severe": [p[2] for p in all_probs],
-    })
-    df.to_csv("predictions_val_sas.csv", index=False)
-    print("Saved ensemble prediction results to predictions_val_sas.csv")
-
-
-    weighted_loss = val_loss / len(val_loader)
-    print(f"Weighted Cross-Entropy Loss: {weighted_loss:.4f}")
-
-    # Confusion matrix
-    cm = confusion_matrix(all_labels, all_preds)
-    class_names = ['Normal/Mild', 'Moderate', 'Severe']
-
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=class_names, yticklabels=class_names)
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.title(f"Confusion Matrix SAS\nWeighted CE Loss = {weighted_loss:.4f}")
-    plt.tight_layout()
-    plt.savefig("confusion_matrix_val_sas.png", bbox_inches='tight')
-    plt.close()
-
+    return pred_sorted 
 
 def main():
     args = parse_args()
     data_dir = args.data
-    csv_file = args.csv_file
     model_path = args.model_path  # Add model path argument
 
     if not os.path.exists(model_path):
-        print(f"Error: Model checkpoint not found at {model_path}")
+        print(f"Error: Model folder not found at {model_path}")
         return
 
-    if not os.path.exists(data_dir) or not os.path.exists(csv_file):
-        print("Invalid data path or CSV file.")
-        return
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    inference_and_evaluate(
+    pred_sas = inference_sas(
         device=device,
         data_dir=data_dir,
-        csv_file=csv_file,
         model_path=model_path,
         batch_size=2,
         layers=[3, 4, 6, 3]
     )
+
+    output_csv = "predictions.csv"
+
+    with open(output_csv, mode="w", newline="") as f:
+        writer = csv.writer(f)
+        
+        # Write header
+        writer.writerow(["label", "Normal/Mild", "Moderate", "Severe"])
+        
+        # Write each prediction
+        for label, output in pred_sas:
+            writer.writerow([label, round(output[0],2), round(output[1],2), round(output[2],2)])
 
 
 
