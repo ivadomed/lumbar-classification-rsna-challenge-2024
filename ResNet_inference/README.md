@@ -12,10 +12,16 @@ To perform inference you can either perform inference for separate diseases or a
 
 To perform inference for only one disease you can type: 
 ```bash
-python inference_[disease].py --data <PATH_DATA_DIR> --model_dir <PATH_MODEL_DIR> 
+python inference_[disease].py --data <PATH_DATA_DIR> --model_dir <PATH_MODEL_DIR>  --output_csv <PATH_TO_CSV>
 ```
 
 To perform inference for all diseases you can type: 
 ```bash
-python inference_[disease].py --data <PATH_DATA_DIR> --model_dir <PATH_MODEL_DIR> 
+python inference.py --data <PATH_DATA_DIR> --model_dir <PATH_MODEL_DIR> --output_csv <PATH_TO_CSV>
 ```
+
+Warning: if the PATH_TO_CSV refers to an already existing csv it will overwrite the existing csv. 
+
+## Output 
+
+The output of the inference is a csv containing the predictions per subject per disease per level. 

@@ -18,6 +18,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', required=True)
     parser.add_argument('--model_path', required=True)
+    parser.add_argument('--output_csv', required=True)
     return parser.parse_args()
 
 
@@ -187,7 +188,9 @@ def inference_sas(device, data_dir, model_path, batch_size=4, layers=[3, 4, 6, 3
 def main():
     args = parse_args()
     data_dir = args.data
-    model_path = args.model_path  # Add model path argument
+    model_path = args.model_path  
+    output_csv = args.output_csv
+
 
     if not os.path.exists(model_path):
         print(f"Error: Model folder not found at {model_path}")
@@ -203,7 +206,6 @@ def main():
         layers=[3, 4, 6, 3]
     )
 
-    output_csv = "predictions.csv"
 
     with open(output_csv, mode="w", newline="") as f:
         writer = csv.writer(f)
