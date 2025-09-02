@@ -13,29 +13,22 @@ None
 
 
 import os
-import numpy as np
 import torch
 from tqdm import tqdm
 import pandas as pd
-import monai
 from monai.transforms import (
-    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
-    ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd
+    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, 
+    ToTensord,  SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
+    NormalizeIntensityd, RandScaleIntensityd,  RandAffined, RandGaussianNoised, RandRotated,
+    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend,RandBiasFieldd
 )
-from monai.networks.nets import DenseNet201, ResNet
+from monai.networks.nets import ResNet
 import torch
-from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
+from torch.utils.data import DataLoader, Dataset
 import torch.optim as optim
 from torch.nn import CrossEntropyLoss
 from monai.transforms import Compose
-from monai.data import Dataset
-from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import nibabel as nib
 import argparse  
 from monai.data import Dataset, DataLoader
 import wandb
@@ -44,29 +37,26 @@ from utils.augment import *
 
 # Function to parse command-line arguments
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
+    parser = argparse.ArgumentParser(description="Run script for scs model training.")
     parser.add_argument('--data', type=str, required=True, help="Directory where the data is stored.")
     parser.add_argument('--csv_file', type=str, required=True, help="Path to the CSV file containing dataset information.")
     return parser.parse_args()
 
-
 # weights of the loss
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
-
 # transformation pipeline for the data
 def get_transforms(mode='basic'):
-    # Define the transform pipeline with rotation augmentation
     
     first_transforms = [
         LoadImaged(keys=['T2']),
         EnsureChannelFirstd(keys=['T2']),
         Spacingd(keys=['T2'], pixdim=(4, 0.4, 0.4), mode=('bilinear')),
-        SpatialPadd(keys=['T2'], spatial_size=(6,80, 80)),  # Adjust padding for 2D
+        SpatialPadd(keys=['T2'], spatial_size=(6,80, 80)),  
     ]
 
     second_transforms_basic = [
-        CenterSpatialCropd(keys=['T2'], roi_size=(6,80, 80)),  # Adjust crop for 2D
+        CenterSpatialCropd(keys=['T2'], roi_size=(6,80, 80)),  
         ScaleIntensityd(keys=['T2']), 
         NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),
         ToTensord(keys=['T2'])
@@ -84,15 +74,11 @@ def get_transforms(mode='basic'):
         RandLambdad(keys=['T2'],func=aug_inverse,prob=0.05, ),   
         RandBiasFieldd(keys=['T2'],prob=0.05),
         RandAffined(keys=['T2'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
-
         RandGaussianNoised(keys=['T2'], mean=0.0, std=0.1, prob=0.05),
         RandGaussianSharpend(keys=['T2'], prob=0.05),   
-
-        #Rand3DElasticd(keys=['T1'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
-
         ResizeWithPadOrCropd(keys=['T2'], spatial_size=(6, 80, 80)),
-        RandScaleIntensityd(keys=['T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
-        NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
+        RandScaleIntensityd(keys=['T2'], factors=(0.8, 1.2), prob=1), 
+        NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),  
         ToTensord(keys=['T2'])
         ]
 
@@ -114,7 +100,6 @@ def prepare_data(data_dir, csv_file, transform):
     
     counter = 0
 
-    # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
@@ -134,11 +119,9 @@ def prepare_data(data_dir, csv_file, transform):
                         subject_id = (subject.replace('sub-', ''))
                         
                         label_column = f'spinal_canal_stenosis_{disk_level.lower()}'
-                        # Obtenir l'étiquette brute
                         
                         label = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column].values[0]
                         
-                        # Convertir l'étiquette textuelle en valeur numérique
                         label_numeric = text2int.get(label, -1)
                         if label_numeric != -1:
                             counter += 1
@@ -148,8 +131,8 @@ def prepare_data(data_dir, csv_file, transform):
     print(f"Nombre de données chargées: {counter}")
     return Dataset(data=data, transform=transform)
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=0.0001, augment=False):
-    # Préparer les données
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, layers=[3, 4, 6, 3], wd=0.0001):
+
     data_dir_train = os.path.join(data_dir, 'training')
     data_dir_val = os.path.join(data_dir, 'validation')
 
@@ -161,7 +144,6 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     train_loader = DataLoader(data_train, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(data_val, batch_size=batch_size, shuffle=False)
     
-    # Définir le modèle, la loss function et l'optimiseur
     model = ResNet(
             block="bottleneck",
             layers=layers,
@@ -171,34 +153,18 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             num_classes=3,
             ).cuda()
     
-    # hyperparameters
-    hyperparameters = {
-        'batch_size': batch_size,
-        'learning_rate': lr,
-        'num_epochs': epochs,
-        'val_split': val_split,
-        'layers': layers,
-        'weight_decay': wd,
-        'augment': augment,
-        'train_set_size': len(data_train),
-        'val_set_size': len(data_val),
-        'randbiaisfield prob and coeff': (0.4, 0.3)
-    }
-    model_name = f"scs_5"
+    model_name = f"scs"
 
-    
     model = model.to(device)
     
     criterion = CrossEntropyLoss(weight=weight)
 
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay= wd)
 
-    # Listes pour stocker la perte et l'exactitude
     train_losses = []
     val_losses = []
     best_val_loss = float('inf') 
 
-    # Entraînement
     for epoch in range(epochs):
 
         counter = 0 
@@ -227,16 +193,13 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
                 wandb.log({"training images": wandb.Image(fig)})
                 plt.close(fig)
             
-            # Forward pass
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
 
-            # Backward pass et optimisation
             loss.backward()
             optimizer.step()
 
-            # Stats
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
             correct_predictions += (predicted == labels).sum().item()
@@ -246,7 +209,6 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
         train_losses.append(running_loss / len(train_loader))
         wandb.log({"train_loss": train_losses[-1], "epoch": epoch})  # Log training loss
-
 
         print(f"Epoch {epoch+1}/{epochs}, Loss: {train_losses[-1]}, Accuracy: {100 * correct_predictions / total_predictions}%")
 
@@ -274,7 +236,6 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
                     wandb.log({"val images": wandb.Image(fig)})
                     plt.close(fig)
 
-                # Forward pass
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
 
@@ -297,7 +258,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             # Sauvegarde du modèle
             torch.save(model.state_dict(), f"model/{model_name}.pth")
 
-    print("Entraînement terminé.")
+    print("Training finished.")
 
 
    
@@ -330,30 +291,20 @@ def plot_slices(image):
 
 def main():
 
-    # Parse command-line arguments
     args = parse_args()
     
-    # Extract the data directory and CSV file path
     data_dir = args.data
     csv_file = args.csv_file
-    
 
-    config = None
     output_path = "output_path"
-    wandb.init(project=f'ResNet_scs', config=config, save_code=True, dir=output_path)
-
+    wandb.init(project=f'ResNet_scs', save_code=True, dir=output_path)
 
     exp_logger = pl.loggers.WandbLogger(
                         name="test",
                         save_dir=output_path,
                         group="rsna-lumbar-classification",
                         log_model=True, # save best model using checkpoint callback
-                        config=config)
-
-    # Saving training script to wandb
-    wandb.save(config)
-
-  
+                        )
 
     # Check if the data directory exists
     if not os.path.exists(data_dir):
@@ -364,14 +315,10 @@ def main():
     if not os.path.exists(csv_file):
         print(f"Error: The CSV file '{csv_file}' does not exist.")
         return
-    
-   # Specify the GPU index (0, 1, 2, ...)
-    gpu_id = 0  # Change this to the desired GPU index
-    device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
 
-    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3], augment=True)
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=1e-4, epochs=40,layers=[3, 4, 6, 3])
    
     wandb.finish()  
 

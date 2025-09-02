@@ -13,37 +13,29 @@ None
 
 
 import os
-import numpy as np
 import torch
 from tqdm import tqdm
 import pandas as pd
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
-    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, ConcatItemsd,
-    ToTensord, RandRotate90d, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, RandSpatialCropd,
-    NormalizeIntensityd, RandScaleIntensityd, RandShiftIntensityd, Resized, RandAffined, RandGaussianNoised, RandRotated,
-    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, Rand3DElasticd,RandBiasFieldd, Flipd, Cropd, SpatialCropd
+    Compose, LoadImaged, EnsureChannelFirstd, ScaleIntensityd, 
+    ToTensord, RandFlipd, SpatialPadd, CenterSpatialCropd, Spacingd, 
+    NormalizeIntensityd, RandScaleIntensityd, RandAffined, RandGaussianNoised, RandRotated,
+    ResizeWithPadOrCropd, RandLambdad, RandGaussianSharpend, RandBiasFieldd, SpatialCropd
 )
-from monai.networks.nets import DenseNet201, ResNet
+from monai.networks.nets import ResNet
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
 import torch.optim as optim
 from torch.nn import CrossEntropyLoss
-from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import nibabel as nib
 import argparse  
-import torchio as tio
-from utils.image import Image
-import torch.nn as nn
 import wandb
 import pytorch_lightning as pl
 from utils.augment import *
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run MONAI script for medical image processing.")
+    parser = argparse.ArgumentParser(description="Run script for sas model training.")
     parser.add_argument('--data', type=str, required=True, help="Directory where the data is stored.")
     parser.add_argument('--csv_file', type=str, required=True, help="Path to the CSV file containing dataset information.")
     return parser.parse_args()
@@ -53,16 +45,13 @@ def parse_args():
 weight = torch.tensor([1.0, 2.0, 4.0]).cuda()
 
 def get_transforms(mode='basic', left=True):
-    # Define the transform pipeline with rotation augmentation
     
     first_transforms = [
         LoadImaged(keys=['T2']),
         EnsureChannelFirstd(keys=['T2']),
-        Spacingd(keys=['T2'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  # Ré-échantillonnage de l'image
-        SpatialPadd(keys=['T2'], spatial_size=(120, 80, 6)),  # Padding pour atteindre une taille fixe
-        CenterSpatialCropd(keys=['T2'], roi_size=(120,80, 6)),  # Adjust crop for 2D
-
-
+        Spacingd(keys=['T2'], pixdim=(0.4, 0.4, 4.4), mode=('bilinear')),  
+        SpatialPadd(keys=['T2'], spatial_size=(120, 80, 6)),  
+        CenterSpatialCropd(keys=['T2'], roi_size=(120,80, 6)),  
     ]
 
     if left: 
@@ -92,12 +81,8 @@ def get_transforms(mode='basic', left=True):
         RandLambdad(keys=['T2'],func=aug_inverse,prob=0.05, ),   
         RandBiasFieldd(keys=['T2'],prob=0.05),
         RandAffined(keys=['T2'],prob=0.05, padding_mode="zeros", mode=["bilinear"]), 
-
         RandGaussianNoised(keys=['T2'], mean=0.0, std=0.1, prob=0.05),
         RandGaussianSharpend(keys=['T2'], prob=0.05),   
-
-        #Rand3DElasticd(keys=['T2'],prob=0.05, padding_mode="zeros", mode=["bilinear"], sigma_range=(5,7), magnitude_range=(50,150)),
-
         ResizeWithPadOrCropd(keys=['T2'], spatial_size=(60, 80, 6)),
         RandScaleIntensityd(keys=['T2'], factors=(0.8, 1.2), prob=1),  # Normalisation de l'intensité pour l'image
         NormalizeIntensityd(keys=['T2'], nonzero=True, channel_wise=True),  # Normalisation de l'intensité sur l'image
@@ -119,7 +104,6 @@ def prepare_data(data_dir, csv_file):
     labels_df = pd.read_csv(csv_file)
     counter = 0 
 
-    # Dictionnaire de conversion des étiquettes
     text2int = {"Normal/Mild": 0, "Moderate": 1, "Severe": 2}
     
     for subject in os.listdir(data_dir):
@@ -142,8 +126,8 @@ def prepare_data(data_dir, csv_file):
                         
                         label_column_left = f'left_subarticular_stenosis_{disk_level.lower()}'
                         label_left = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column_left].values[0]
-                        # Convertir l'étiquette textuelle en valeur numérique
                         label_numeric_left = text2int.get(label_left, -1)
+
                         if label_numeric_left != -1:
 
                             data_left.append({"T2": t2_path, "label": label_numeric_left})
@@ -153,7 +137,6 @@ def prepare_data(data_dir, csv_file):
                         label_column_right = f'right_subarticular_stenosis_{disk_level.lower()}'
 
                         label_right = labels_df.loc[labels_df['study_id'] == int(subject_id), label_column_right].values[0]
-                        # Convertir l'étiquette textuelle en valeur numérique
                         label_numeric_right = text2int.get(label_right, -1)
                         if label_numeric_right != -1:
 
@@ -191,11 +174,10 @@ def plot_slices(image):
 
 
 
-def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, val_split=0.25, layers=[3, 4, 6, 3], wd=1e-4):
+def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, epochs=20, layers=[3, 4, 6, 3], wd=1e-4):
 
     train_dir = os.path.join(data_dir, 'training')
     val_dir = os.path.join(data_dir, 'validation')
-    # Préparer les données
 
     train_transform_left=get_transforms(mode='random', left=True)
     train_transform_right=get_transforms(mode='random', left=False)
@@ -225,19 +207,7 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
             num_classes=3,
             ).cuda()
     
-    # hyperparameters
-    hyperparameters = {
-        'batch_size': batch_size,
-        'learning_rate': lr,
-        'num_epochs': epochs,
-        'val_split': val_split,
-        'layers': layers,
-        'weight_decay': wd,
-        'train_set_size': len(train_dataset),
-        'val_set_size': len(val_dataset)
-    }
-    model_name = f"sas_5"
-
+    model_name = f"sas"
     
     model = model.to(device)
     
@@ -245,12 +215,10 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
     
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay= wd)
 
-    # Listes pour stocker la perte et l'exactitude
     train_losses = []
     val_losses = []
     best_val_loss = float('inf') 
 
-    # Entraînement
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}/{epochs}")
         model.train()
@@ -276,16 +244,13 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
 
             labels = batch["label"].cuda()
             
-            # Forward pass
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
 
-            # Backward pass et optimisation
             loss.backward()
             optimizer.step()
 
-            # Stats
             running_loss += loss.item()
             _, predicted = torch.max(outputs, 1)
             correct_predictions += (predicted == labels).sum().item()
@@ -323,7 +288,6 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
                     wandb.log({"val images": wandb.Image(fig)})
                     plt.close(fig)
 
-                # Forward pass
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
 
@@ -337,47 +301,33 @@ def train_and_evaluate_model(device, data_dir, csv_file, batch_size=4, lr=1e-4, 
         val_losses.append(val_loss / len(val_loader))
 
         accuracy = 100 * correct_predictions / total_predictions
-        wandb.log({"val_loss": val_losses[-1], "epoch": epoch})  # Log validation loss
+        wandb.log({"val_loss": val_losses[-1], "epoch": epoch})  
 
         print(f"Validation Loss: {val_losses[-1]}, Validation Accuracy: {accuracy}%")
-
-        
 
         if val_losses[-1] < best_val_loss:
             print(f"Validation loss improved from {best_val_loss:.4f} to {val_losses[-1]:.4f}. Saving model...")
             best_val_loss = val_losses[-1]
             
-            # Sauvegarde du modèle
             torch.save(model.state_dict(), f"model/{model_name}.pth")
-
 
     print("Entraînement terminé.")
 
-
-
 def main():
-    # Parse command-line arguments
-    args = parse_args()
 
-    # Extract the data directory and CSV file path
+    args = parse_args()
     data_dir = args.data
     csv_file = args.csv_file
 
-
-    config = None
     output_path = "output_path"
-    wandb.init(project=f'ResNet_sas', config=config, save_code=True, dir=output_path)
-
+    wandb.init(project=f'ResNet_sas', save_code=True, dir=output_path)
 
     exp_logger = pl.loggers.WandbLogger(
                         name="test",
                         save_dir=output_path,
                         group="rsna-lumbar-classification",
                         log_model=True, # save best model using checkpoint callback
-                        config=config)
-
-    # Saving training script to wandb
-    wandb.save(config)
+                        )
 
     # Check if the data directory exists
     if not os.path.exists(data_dir):
@@ -389,13 +339,11 @@ def main():
         print(f"Error: The CSV file '{csv_file}' does not exist.")
         return
     
-    
     device = torch.device(f'cuda' if torch.cuda.is_available() else 'cpu')
 
-    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=1e-4, epochs=40, val_split=0.25, layers=[3, 4, 6, 3])
+    train_and_evaluate_model(device, data_dir, csv_file, batch_size=2, lr=1e-4, epochs=40, layers=[3, 4, 6, 3])
 
-    wandb.finish()  
-
+    wandb.finish()
 
 if __name__ == "__main__":
     main()
