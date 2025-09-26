@@ -7,8 +7,8 @@ The code has to be used after the preprocessing cf this [README.md](../preproces
 
 Once the preprocessing has been applied you can train the models using the three files: 
 - `train_nfn.py`
-- `train_sas_axial.py`
-- `train_scs_sagittal.py`
+- `train_sas.py`
+- `train_scs.py`
 
 To do so the command is the same for the three models: 
 
