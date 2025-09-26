@@ -2,7 +2,7 @@
 
 ## Preprocessing 
 
-:warning: This section is only working with the RSNA data. If you want to apply this on your own dataset you need to use the `preprocessing` folder. 
+:warning: This section is only working with the RSNA data. If you want to apply this on your own dataset refer yourself to [README.md](../preprocessing/README.md). 
 
 The preprocessing is transforming the kaggle dataset into a format that we can use for training. Everything is automated once you start the command. 
 
