@@ -1,7 +1,10 @@
 # Team Neuropoly: RSNA 2024 Lumbar Spine Degenerative Classification Challenge
 
+This repos defines a **3 step preprocessing** pipeline used to preprocess data from this Kaggle [Challenge](https://www.kaggle.com/code/abhinavsuri/anatomy-image-visualization-overview-rsna-raids).
 
-This branch defines a **3 step preprocessing** pipeline used to preprocess data from this Kaggle [Challenge](https://www.kaggle.com/code/abhinavsuri/anatomy-image-visualization-overview-rsna-raids)
+# Citation
+
+> Dagonneau T, Salmona A, Molinier N, Cohen-Adad J. _Automatic radiology assessment of Lumbar Degenerative Diseases_. Proceedings of the 41st Annual Meeting of ESMRMB. Marseille, France 2025
 
 # Requirements 
 
