@@ -33,7 +33,7 @@ Then you can perform inference following the instructions in the [ResNet_inferen
 
 # Running the code on the challenge data
 
-If you want to replicate our work you first need to preprocess the data from the challenge following the instructions in the [preprocessing](preprocessing/README.md). Then you can train the models using the [ResNet_training](ResNet_training/README.md) folder. 
+If you want to replicate our work you first need to preprocess the data from the challenge following the instructions in the [preprocessing_RSNA_challenge](preprocessing_RSNA_challenge/README.md) folder. Then you can train the models using the [ResNet_training](ResNet_training/README.md) folder. 
 Then to perform inference on the kaggle dataset you can use the [ResNet_inference_RSNA_challenge](ResNet_inference_RSNA_challenge/README.md).
 
 
