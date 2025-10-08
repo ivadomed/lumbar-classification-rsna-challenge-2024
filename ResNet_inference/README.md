@@ -4,7 +4,7 @@
 
 Your dataset needs to follow the [BIDS](https://bids.neuroimaging.io/index.html) convention. 
 In particular you acquisition names should contain the acquisition orientation (sag for sagittal and ax for axial), and the contrast (T2w or T1w). 
-You also need to apply the preprocessing to your data following this rules TODODODODO 
+You also need to apply the preprocessing to your data following this [rules](../preprocessing/README.md).
 
 ## Perform inference
 
