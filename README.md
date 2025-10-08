@@ -1,6 +1,6 @@
 # Team Neuropoly: RSNA 2024 Lumbar Spine Degenerative Classification Challenge
 
-This repos defines a **3 step preprocessing** pipeline used to preprocess data from this Kaggle [Challenge](https://www.kaggle.com/code/abhinavsuri/anatomy-image-visualization-overview-rsna-raids).
+This repos defines the proposed method from Teamn Neuropoly for the [RSNA 2024 Lumbar Spine Degenerative Classification Challenge](https://www.kaggle.com/code/abhinavsuri/anatomy-image-visualization-overview-rsna-raids).
 
 # Citation
 
@@ -28,7 +28,7 @@ python3 -m pip install -e totalspineseg
 # Performing inference
 
 To perform inference you need to download the model. 
-Then you have to preprocess your data (they need to be following the [BIDS](https://bids.neuroimaging.io/index.html) convention) by following the instructions [here](preprocessing/README.md). 
+Then you have to preprocess your data (they need to be following the [BIDS](https://bids.neuroimaging.io/index.html) convention) by following the instructions in the [preprocessing](preprocessing/README.md) folder. 
 Then you can perform inference following the instructions in the [ResNet_inference](ResNet_inference/README.md) folder. 
 
 # Running the code on the challenge data
